@@ -742,7 +742,7 @@ function renderBilling() {
     <div class="page-header-left"><h2>Billing Management</h2><p>Create and manage billing records for homeowners.</p></div>
     <div class="page-header-actions">
       <button class="btn btn-secondary" onclick="autoGenerateMonthlyDues()">Auto-Generate Dues</button>
-      <button class="btn btn-primary" onclick="openAddBillingModal()">Create Billing</button>
+      <button class="btn btn-primary" onclick="openProfessionalBillingModal()">Create Billing</button>
     </div>
   </div>
   <div class="section-card">
@@ -819,6 +819,99 @@ function openAddBillingModal() {
 
 function toggleSelectAll(cb) {
   document.querySelectorAll('.ho-cb').forEach(c => c.checked = cb.checked);
+}
+
+function openProfessionalBillingModal() {
+  const homeowners = db.get('users').filter(u => u.role === 'homeowner');
+  openModal('Create Billing', `
+    <div class="billing-form">
+      <section class="billing-form-section">
+        <div class="billing-form-kicker">Billing details</div>
+        <div class="form-group">
+          <label>Title *</label>
+          <input id="bf_title" placeholder="Monthly Association Dues"/>
+        </div>
+        <div class="grid-2 billing-compact-grid">
+          <div class="form-group">
+            <label>Amount (PHP) *</label>
+            <input id="bf_amount" type="number" min="0" step="0.01" placeholder="1500.00"/>
+          </div>
+          <div class="form-group">
+            <label>Due Date *</label>
+            <input id="bf_due" type="date"/>
+          </div>
+        </div>
+        <div class="form-group billing-desc-group">
+          <label>Description</label>
+          <textarea id="bf_desc" placeholder="Add notes, coverage period, or payment instructions..."></textarea>
+        </div>
+      </section>
+
+      <section class="billing-form-section billing-assignment-section">
+        <div class="billing-assignment-header">
+          <div>
+            <div class="billing-form-kicker">Homeowner assignment</div>
+            <div class="billing-helper-text">Choose who should receive this billing.</div>
+          </div>
+          <div class="billing-selected-count" id="bf_selectedCount">0 selected</div>
+        </div>
+        <div class="billing-assignment-tools">
+          <label class="billing-select-all">
+            <input type="checkbox" id="bf_all" onchange="toggleProfessionalBillingSelectAll(this)">
+            <span>Select all homeowners</span>
+          </label>
+          <div class="billing-search">
+            <svg width="14" height="14"><use href="#ico-search"/></svg>
+            <input id="bf_assignSearch" type="text" placeholder="Search homeowners..."/>
+          </div>
+        </div>
+        <div class="billing-homeowner-list">
+          ${homeowners.map(u => `
+            <label class="billing-homeowner-row" data-search="${`${u.name} ${u.block || ''} ${u.lot || ''} ${u.username || ''}`.toLowerCase()}">
+              <input type="checkbox" class="ho-cb" value="${u.id}" onchange="updateProfessionalBillingSummary()">
+              <span class="billing-homeowner-main">
+                <span class="billing-homeowner-name">${u.name}</span>
+                <span class="billing-homeowner-meta">${u.block || 'No block'} | ${u.lot || 'No lot'}</span>
+              </span>
+            </label>`).join('')}
+        </div>
+      </section>
+    </div>
+  `, [
+    { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
+    { label: 'Create Billing', cls: 'btn-primary', action: saveAddBilling },
+  ]);
+
+  setupProfessionalBillingSearch();
+  updateProfessionalBillingSummary();
+}
+
+function toggleProfessionalBillingSelectAll(cb) {
+  document.querySelectorAll('.ho-cb').forEach(c => c.checked = cb.checked);
+  updateProfessionalBillingSummary();
+}
+
+function setupProfessionalBillingSearch() {
+  const input = document.getElementById('bf_assignSearch');
+  if (!input) return;
+  input.addEventListener('input', () => {
+    const q = input.value.trim().toLowerCase();
+    document.querySelectorAll('.billing-homeowner-row').forEach(row => {
+      row.classList.toggle('hidden', q && !row.dataset.search.includes(q));
+    });
+  });
+}
+
+function updateProfessionalBillingSummary() {
+  const selected = document.querySelectorAll('.ho-cb:checked').length;
+  const total = document.querySelectorAll('.ho-cb').length;
+  const countEl = document.getElementById('bf_selectedCount');
+  const allEl = document.getElementById('bf_all');
+  if (countEl) countEl.textContent = `${selected} of ${total} selected`;
+  if (allEl) {
+    allEl.checked = total > 0 && selected === total;
+    allEl.indeterminate = selected > 0 && selected < total;
+  }
 }
 
 function saveAddBilling() {
