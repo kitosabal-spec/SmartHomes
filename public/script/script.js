@@ -571,8 +571,8 @@ function renderHomeowners() {
       </div>
     </div>
     <div class="section-card-body no-pad">
-      <div class="table-wrapper"><table class="data-table">
-        <thead><tr><th>#</th><th>Name</th><th>Username</th><th>Password</th><th>Block / Lot</th><th>Lot Area</th><th>Contact</th><th>Email</th><th>Balance</th><th>Actions</th></tr></thead>
+      <div class="table-wrapper"><table class="data-table homeowner-compact-table">
+        <thead><tr><th>#</th><th>Homeowner</th><th>Block / Lot</th><th>Balance</th><th>Details</th><th>Actions</th></tr></thead>
         <tbody id="hoTableBody"></tbody>
       </table></div>
     </div>
@@ -586,20 +586,15 @@ function renderHOTable(filtered = null) {
   const users = filtered !== null ? filtered : db.get('users').filter(u => u.role === 'homeowner');
   const tbody = document.getElementById('hoTableBody');
   if (!tbody) return;
-  if (!users.length) { tbody.innerHTML = `<tr><td colspan="10"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-users"/></svg>No homeowners found.</div></td></tr>`; return; }
+  if (!users.length) { tbody.innerHTML = `<tr><td colspan="6"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-users"/></svg>No homeowners found.</div></td></tr>`; return; }
   tbody.innerHTML = users.map((u, i) => `
     <tr>
       <td>${i + 1}</td>
-      <td><strong>${u.name}</strong></td>
-      <td>${u.username || '—'}</td>
-      <td>${u.password || '—'}</td>
+      <td><div class="homeowner-name-cell"><strong>${u.name}</strong></div></td>
       <td>${u.block || '—'}, ${u.lot || '—'}</td>
-      <td>${u.lotArea || 0} sqm</td>
-      <td>${u.contact || '—'}</td>
-      <td>${u.email}</td>
       <td class="${(u.balance||0) > 0 ? 'amount-due' : 'amount-paid'}">₱${(u.balance||0).toLocaleString()}</td>
+      <td><button class="ho-info-btn" onclick="openViewHO('${u.id}')" title="View details">i</button></td>
       <td><div class="td-actions">
-        <button class="btn btn-secondary btn-sm" onclick="openViewHO('${u.id}')">View</button>
         <button class="btn btn-secondary btn-sm" onclick="openEditHO('${u.id}')">Edit</button>
         <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteHO('${u.id}')" title="Delete"><svg width="14" height="14"><use href="#ico-trash"/></svg></button>
       </div></td>
@@ -681,7 +676,7 @@ function openViewHO(id) {
       <div class="report-summary-item"><div class="r-val">${payments.filter(p=>p.status==='approved').length}</div><div class="r-lbl">Approved Payments</div></div>
       <div class="report-summary-item"><div class="r-val">${complaints.length}</div><div class="r-lbl">Complaints Filed</div></div>
     </div>
-    <p style="margin-top:14px;font-size:0.85rem;color:var(--text-3)">Contact: ${u.contact||'N/A'} · Balance: <strong style="color:var(--red-600)">₱${(u.balance||0).toLocaleString()}</strong></p>
+    <p style="margin-top:14px;font-size:0.85rem;color:var(--text-3)">Lot Area: <strong>${u.lotArea || 0} sqm</strong> | Contact: ${u.contact||'N/A'} | Balance: <strong style="color:var(--red-600)">₱${(u.balance||0).toLocaleString()}</strong></p>
     <p style="margin-top:14px;font-size:0.85rem;color:var(--text-3)">Username: <strong>${u.username || 'N/A'}</strong> | Password: <strong>${u.password || 'N/A'}</strong></p>
   `, [{ label: 'Close', cls: 'btn-secondary', action: closeModal }]);
 }
@@ -969,7 +964,7 @@ function viewBillingDetail(id) {
     </div>
     <strong style="font-size:0.82rem;color:var(--text-3)">ASSIGNED TO (${assignedNames.length})</strong>
     <div style="margin-top:8px;max-height:180px;overflow-y:auto">
-      ${assignedNames.map(n => `<div style="padding:6px 0;font-size:0.88rem;border-bottom:1px solid var(--border);color:var(--text-2)">â€¢ ${n}</div>`).join('')}
+      ${assignedNames.map(n => `<div style="padding:6px 0;font-size:0.88rem;border-bottom:1px solid var(--border);color:var(--text-2)">- ${n}</div>`).join('')}
     </div>
   `, [{ label: 'Close', cls: 'btn-secondary', action: closeModal }]);
 }
@@ -1393,7 +1388,7 @@ function saveComplaintManagement(id) {
   db.save('complaints', c);
 
   const ho = db.getOne('users', c.homeownerId);
-  logAction(`Updated complaint from ${ho ? ho.name : 'Unknown'}: ${oldStatus} â†’ ${newStatus}`);
+  logAction(`Updated complaint from ${ho ? ho.name : 'Unknown'}: ${oldStatus} -> ${newStatus}`);
   addNotification('Complaint Updated', `Status changed from "${oldStatus}" to "${newStatus}".`);
 
   closeModal();
@@ -1710,7 +1705,7 @@ function renderSettings() {
       <div class="settings-row">
         <div>
           <div class="settings-label">Monthly Dues Rate Per Sqm</div>
-          <div style="font-size:0.78rem;color:var(--text-3)">Used by Auto-Generate Dues: lot area Ã— rate</div>
+          <div style="font-size:0.78rem;color:var(--text-3)">Used by Auto-Generate Dues: lot area x rate</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <input id="duesRateInput" type="number" min="0" step="0.001" value="${getDuesRatePerSqm()}" style="width:120px">
