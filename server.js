@@ -14,7 +14,7 @@ app.use(express.static(__dirname));
 
 const tableConfig = {
   users: {
-    columns: ['id', 'username', 'password', 'role', 'name', 'email', 'block', 'lot', 'contact', 'balance'],
+    columns: ['id', 'username', 'password', 'role', 'name', 'email', 'block', 'lot', 'lotArea', 'contact', 'balance'],
     jsonColumns: [],
     booleanColumns: [],
   },
@@ -48,6 +48,11 @@ const tableConfig = {
     jsonColumns: [],
     booleanColumns: [],
   },
+  appSettings: {
+    columns: ['id', 'value'],
+    jsonColumns: [],
+    booleanColumns: [],
+  },
 };
 
 const adminUser = {
@@ -59,6 +64,7 @@ const adminUser = {
   email: 'admin@sanalfonsohomes.com',
   block: null,
   lot: null,
+  lotArea: null,
   contact: null,
   balance: 0,
 };
@@ -71,11 +77,11 @@ function loadHomeownerSeed() {
   } catch (error) {
     console.warn(`Could not load homeowner seed from ${seedPath}. Falling back to demo homeowners.`);
     return [
-      { id: 'u002', username: 'juandelacruz', password: 'home123', role: 'homeowner', name: 'Juan Dela Cruz', email: 'juan@email.com', block: 'Block 3', lot: 'Lot 7', contact: '09171234567', balance: 3500 },
-      { id: 'u003', username: 'annamaria', password: 'home123', role: 'homeowner', name: 'Anna Maria Reyes', email: 'anna@email.com', block: 'Block 1', lot: 'Lot 2', contact: '09281234567', balance: 0 },
-      { id: 'u004', username: 'carlosmagno', password: 'home123', role: 'homeowner', name: 'Carlos Magno', email: 'carlos@email.com', block: 'Block 2', lot: 'Lot 5', contact: '09351234567', balance: 7000 },
-      { id: 'u005', username: 'ritaflores', password: 'home123', role: 'homeowner', name: 'Rita Flores', email: 'rita@email.com', block: 'Block 4', lot: 'Lot 1', contact: '09461234567', balance: 1500 },
-      { id: 'u006', username: 'pedroparcero', password: 'home123', role: 'homeowner', name: 'Pedro Parcero', email: 'pedro@email.com', block: 'Block 1', lot: 'Lot 8', contact: '09571234567', balance: 0 },
+      { id: 'u002', username: 'juandelacruz', password: 'home123', role: 'homeowner', name: 'Juan Dela Cruz', email: 'juan@email.com', block: 'Block 3', lot: 'Lot 7', lotArea: 0, contact: '09171234567', balance: 3500 },
+      { id: 'u003', username: 'annamaria', password: 'home123', role: 'homeowner', name: 'Anna Maria Reyes', email: 'anna@email.com', block: 'Block 1', lot: 'Lot 2', lotArea: 0, contact: '09281234567', balance: 0 },
+      { id: 'u004', username: 'carlosmagno', password: 'home123', role: 'homeowner', name: 'Carlos Magno', email: 'carlos@email.com', block: 'Block 2', lot: 'Lot 5', lotArea: 0, contact: '09351234567', balance: 7000 },
+      { id: 'u005', username: 'ritaflores', password: 'home123', role: 'homeowner', name: 'Rita Flores', email: 'rita@email.com', block: 'Block 4', lot: 'Lot 1', lotArea: 0, contact: '09461234567', balance: 1500 },
+      { id: 'u006', username: 'pedroparcero', password: 'home123', role: 'homeowner', name: 'Pedro Parcero', email: 'pedro@email.com', block: 'Block 1', lot: 'Lot 8', lotArea: 0, contact: '09571234567', balance: 0 },
     ];
   }
 }
@@ -88,6 +94,7 @@ const seed = {
   complaints: [],
   auditLog: [],
   notifications: [],
+  appSettings: [{ id: 'duesRatePerSqm', value: '5.725' }],
 };
 
 function run(sql, params = []) {
@@ -192,9 +199,11 @@ async function createTables() {
     email TEXT,
     block TEXT,
     lot TEXT,
+    lotArea REAL,
     contact TEXT,
     balance REAL DEFAULT 0
   )`);
+  await run('ALTER TABLE users ADD COLUMN lotArea REAL').catch(() => {});
 
   await run(`CREATE TABLE IF NOT EXISTS billings (
     id TEXT PRIMARY KEY,
@@ -254,6 +263,11 @@ async function createTables() {
     title TEXT,
     message TEXT,
     time TEXT
+  )`);
+
+  await run(`CREATE TABLE IF NOT EXISTS appSettings (
+    id TEXT PRIMARY KEY,
+    value TEXT
   )`);
 }
 

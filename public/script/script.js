@@ -8,6 +8,7 @@ let notifications = [];
 
 const ROLES = { ADMIN: 'admin', HOMEOWNER: 'homeowner' };
 const COMPLAINT_STATUSES = ['Reviewed', 'In Progress', 'Resolved', 'Rejected'];
+const DEFAULT_DUES_RATE_PER_SQM = 5.725;
 
 const ADMIN_NAV = [
   { id: 'dashboard',      icon: 'ico-dashboard',  label: 'Dashboard',       section: 'MAIN' },
@@ -571,7 +572,7 @@ function renderHomeowners() {
     </div>
     <div class="section-card-body no-pad">
       <div class="table-wrapper"><table class="data-table">
-        <thead><tr><th>#</th><th>Name</th><th>Username</th><th>Password</th><th>Block / Lot</th><th>Contact</th><th>Email</th><th>Balance</th><th>Actions</th></tr></thead>
+        <thead><tr><th>#</th><th>Name</th><th>Username</th><th>Password</th><th>Block / Lot</th><th>Lot Area</th><th>Contact</th><th>Email</th><th>Balance</th><th>Actions</th></tr></thead>
         <tbody id="hoTableBody"></tbody>
       </table></div>
     </div>
@@ -585,14 +586,15 @@ function renderHOTable(filtered = null) {
   const users = filtered !== null ? filtered : db.get('users').filter(u => u.role === 'homeowner');
   const tbody = document.getElementById('hoTableBody');
   if (!tbody) return;
-  if (!users.length) { tbody.innerHTML = `<tr><td colspan="9"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-users"/></svg>No homeowners found.</div></td></tr>`; return; }
+  if (!users.length) { tbody.innerHTML = `<tr><td colspan="10"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-users"/></svg>No homeowners found.</div></td></tr>`; return; }
   tbody.innerHTML = users.map((u, i) => `
     <tr>
       <td>${i + 1}</td>
       <td><strong>${u.name}</strong></td>
-      <td>${u.username || 'â€”'}</td>
-      <td>${u.password || 'â€”'}</td>
+      <td>${u.username || '—'}</td>
+      <td>${u.password || '—'}</td>
       <td>${u.block || '—'}, ${u.lot || '—'}</td>
+      <td>${u.lotArea || 0} sqm</td>
       <td>${u.contact || '—'}</td>
       <td>${u.email}</td>
       <td class="${(u.balance||0) > 0 ? 'amount-due' : 'amount-paid'}">₱${(u.balance||0).toLocaleString()}</td>
@@ -741,7 +743,7 @@ function renderBilling() {
   <div class="page-header">
     <div class="page-header-left"><h2>Billing Management</h2><p>Create and manage billing records for homeowners.</p></div>
     <div class="page-header-actions">
-      <button class="btn btn-secondary" onclick="autoGenerateMonthlyDues()">Auto-Generate Dues</button>
+      <button class="btn btn-secondary" onclick="autoGenerateLotAreaMonthlyDues()">Auto-Generate Dues</button>
       <button class="btn btn-primary" onclick="openProfessionalBillingModal()">Create Billing</button>
     </div>
   </div>
@@ -914,6 +916,17 @@ function updateProfessionalBillingSummary() {
   }
 }
 
+function getDuesRatePerSqm() {
+  const setting = db.getOne('appSettings', 'duesRatePerSqm');
+  const value = parseFloat(setting?.value);
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_DUES_RATE_PER_SQM;
+}
+
+function calculateMonthlyDues(user, rate = getDuesRatePerSqm()) {
+  const lotArea = parseFloat(user?.lotArea || 0);
+  return Math.round((Number.isFinite(lotArea) ? lotArea : 0) * rate * 100) / 100;
+}
+
 function saveAddBilling() {
   const title = document.getElementById('bf_title').value.trim();
   const amount = parseFloat(document.getElementById('bf_amount').value);
@@ -929,6 +942,13 @@ function saveAddBilling() {
     createdAt: new Date().toISOString().split('T')[0],
   };
   db.save('billings', bill);
+  checked.forEach(id => {
+    const user = db.getOne('users', id);
+    if (user) {
+      user.balance = (Number(user.balance) || 0) + amount;
+      db.save('users', user);
+    }
+  });
   logAction(`Created billing: ${title} for ${checked.length} homeowner(s)`);
   addNotification('New Billing Created', `"${title}" assigned to ${checked.length} homeowner(s).`);
   closeModal();
@@ -949,7 +969,7 @@ function viewBillingDetail(id) {
     </div>
     <strong style="font-size:0.82rem;color:var(--text-3)">ASSIGNED TO (${assignedNames.length})</strong>
     <div style="margin-top:8px;max-height:180px;overflow-y:auto">
-      ${assignedNames.map(n => `<div style="padding:6px 0;font-size:0.88rem;border-bottom:1px solid var(--border);color:var(--text-2)">• ${n}</div>`).join('')}
+      ${assignedNames.map(n => `<div style="padding:6px 0;font-size:0.88rem;border-bottom:1px solid var(--border);color:var(--text-2)">â€¢ ${n}</div>`).join('')}
     </div>
   `, [{ label: 'Close', cls: 'btn-secondary', action: closeModal }]);
 }
@@ -978,6 +998,47 @@ function autoGenerateMonthlyDues() {
   renderBilling();
 }
 
+
+function autoGenerateLotAreaMonthlyDues() {
+  const month = new Date().toLocaleString('default', { month: 'long' });
+  const year = new Date().getFullYear();
+  const title = `Monthly Dues - ${month} ${year}`;
+  const homeowners = db.get('users').filter(u => u.role === 'homeowner');
+  const existing = db.get('billings').filter(b => b.title === title);
+  const alreadyAssigned = new Set(existing.flatMap(b => b.assignedTo || []));
+  const rate = getDuesRatePerSqm();
+  const lastDay = new Date(year, new Date().getMonth() + 1, 0).toISOString().split('T')[0];
+  const createdAt = new Date().toISOString().split('T')[0];
+  let created = 0;
+
+  homeowners.forEach((u, index) => {
+    if (alreadyAssigned.has(u.id)) return;
+    const amount = calculateMonthlyDues(u, rate);
+    const bill = {
+      id: `${db.newId('b')}${index}`,
+      title,
+      amount,
+      dueDate: lastDay,
+      description: `Auto-generated monthly dues at PHP ${rate.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })} per sqm for ${u.lotArea || 0} sqm lot area.`,
+      assignedTo: [u.id],
+      status: 'active',
+      createdAt,
+    };
+    db.save('billings', bill);
+    u.balance = (Number(u.balance) || 0) + amount;
+    db.save('users', u);
+    created++;
+  });
+
+  if (!created) {
+    showToast('warning', 'Already Exists', `Dues for ${month} already created.`);
+    return;
+  }
+
+  logAction(`Auto-generated monthly dues: ${title} at PHP ${rate}/sqm for ${created} homeowner(s)`);
+  showToast('success', 'Generated', `${title} created for ${created} homeowner(s).`);
+  renderBilling();
+}
 
 // SECTION 9: ADMIN — PAYMENTS
 
@@ -1332,7 +1393,7 @@ function saveComplaintManagement(id) {
   db.save('complaints', c);
 
   const ho = db.getOne('users', c.homeownerId);
-  logAction(`Updated complaint from ${ho ? ho.name : 'Unknown'}: ${oldStatus} → ${newStatus}`);
+  logAction(`Updated complaint from ${ho ? ho.name : 'Unknown'}: ${oldStatus} â†’ ${newStatus}`);
   addNotification('Complaint Updated', `Status changed from "${oldStatus}" to "${newStatus}".`);
 
   closeModal();
@@ -1647,6 +1708,16 @@ function renderSettings() {
     <div class="settings-section-header"><h4>System Preferences</h4></div>
     <div class="settings-section-body">
       <div class="settings-row">
+        <div>
+          <div class="settings-label">Monthly Dues Rate Per Sqm</div>
+          <div style="font-size:0.78rem;color:var(--text-3)">Used by Auto-Generate Dues: lot area Ã— rate</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input id="duesRateInput" type="number" min="0" step="0.001" value="${getDuesRatePerSqm()}" style="width:120px">
+          <button class="btn btn-primary btn-sm" onclick="saveDuesRateSetting()">Save</button>
+        </div>
+      </div>
+      <div class="settings-row">
         <div><div class="settings-label">Dark Mode</div></div>
         <label class="toggle-switch">
           <input type="checkbox" id="darkToggle" ${document.documentElement.dataset.theme === 'dark' ? 'checked' : ''} onchange="toggleDarkMode()">
@@ -1702,6 +1773,16 @@ function changeAdminPassword() {
   currentUser.password = np;
   db.save('users', currentUser);
   showToast('success', 'Password Changed', 'Your password has been updated.');
+}
+
+function saveDuesRateSetting() {
+  const rate = parseFloat(document.getElementById('duesRateInput').value);
+  if (!Number.isFinite(rate) || rate <= 0) {
+    showToast('error', 'Invalid Rate', 'Enter a valid amount per square meter.');
+    return;
+  }
+  db.save('appSettings', { id: 'duesRatePerSqm', value: rate.toString() });
+  showToast('success', 'Rate Saved', `Monthly dues rate set to PHP ${rate.toLocaleString()} per sqm.`);
 }
 
 function confirmResetData() {
