@@ -401,6 +401,28 @@ function getBillingTotal(billing) {
   return toMoneyNumber(billing?.amount) * getAssignedHomeownerIds(billing).length;
 }
 
+function getBillingCollectionStatus(billing) {
+  const assignedIds = getAssignedHomeownerIds(billing);
+  if (!assignedIds.length) return 'inactive';
+
+  const payments = db.get('payments').filter(payment => payment.billingId === billing.id);
+  const approvedHomeowners = new Set(
+    payments
+      .filter(payment => payment.status === 'approved')
+      .map(payment => payment.homeownerId)
+  );
+  const pendingHomeowners = new Set(
+    payments
+      .filter(payment => payment.status === 'pending')
+      .map(payment => payment.homeownerId)
+  );
+
+  if (assignedIds.every(id => approvedHomeowners.has(id))) return 'paid';
+  if (assignedIds.some(id => pendingHomeowners.has(id))) return 'pending';
+  if (billing.dueDate && billing.dueDate < new Date().toISOString().split('T')[0]) return 'overdue';
+  return billing.status === 'inactive' ? 'inactive' : 'active';
+}
+
 function calculateUserOutstandingBalance(userId) {
   const billings = db.get('billings');
   const activeBillingIds = new Set(billings.map(b => b.id));
@@ -938,16 +960,17 @@ function renderBilling() {
 function renderBillingTable(billings) {
   const tbody = document.getElementById('billTableBody');
   if (!tbody) return;
-  const today = new Date().toISOString().split('T')[0];
   if (!billings.length) { tbody.innerHTML = `<tr><td colspan="6"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-file"/></svg>No billings found.</div></td></tr>`; return; }
   tbody.innerHTML = billings.map(b => {
-    const overdue = b.dueDate < today;
+    const assignedIds = getAssignedHomeownerIds(b);
+    const collectionStatus = getBillingCollectionStatus(b);
+    const overdue = collectionStatus === 'overdue';
     return `<tr class="${overdue ? 'overdue-row' : ''}">
       <td><strong>${b.title}</strong>${overdue ? ' <span class="badge badge-red">Overdue</span>' : ''}</td>
       <td class="amount-due">₱${b.amount.toLocaleString()}</td>
       <td>${b.dueDate}</td>
-      <td>${b.assignedTo.length} homeowner(s)</td>
-      <td>${badgeHtml(b.status === 'active' ? 'active' : 'inactive')}</td>
+      <td>${assignedIds.length} homeowner(s)</td>
+      <td>${badgeHtml(collectionStatus)}</td>
       <td><div class="td-actions">
         <button class="btn btn-secondary btn-sm" onclick="viewBillingDetail('${b.id}')">View</button>
         <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteBilling('${b.id}')" title="Delete"><svg width="14" height="14"><use href="#ico-trash"/></svg></button>
@@ -1369,6 +1392,18 @@ function viewPaymentDetail(id) {
 function approvePayment(id) {
   const p = db.getOne('payments', id);
   if (!p) return;
+  const ho = db.getOne('users', p.homeownerId);
+  const bill = db.getOne('billings', p.billingId);
+  openConfirm(
+    'Approve Payment',
+    `Are you sure you want to approve the payment from <strong>${ho ? ho.name : 'Unknown'}</strong> for <strong>${bill ? bill.title : 'N/A'}</strong>?`,
+    () => applyApprovePayment(id)
+  );
+}
+
+function applyApprovePayment(id) {
+  const p = db.getOne('payments', id);
+  if (!p) return;
   p.status = 'approved';
   p.reviewedAt = new Date().toISOString().split('T')[0];
   db.save('payments', p);
@@ -1387,15 +1422,28 @@ function openRejectPayment(id) {
     <div class="form-group"><label>Remarks</label><textarea id="reject_remarks" placeholder="e.g. Blurry receipt image..."></textarea></div>
   `, [
     { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
-    { label: 'Reject', cls: 'btn-danger', action: () => rejectPayment(id) },
+    { label: 'Reject', cls: 'btn-danger', action: () => confirmRejectPayment(id) },
   ]);
 }
 
-function rejectPayment(id) {
+function confirmRejectPayment(id) {
+  const p = db.getOne('payments', id);
+  if (!p) return;
+  const ho = db.getOne('users', p.homeownerId);
+  const bill = db.getOne('billings', p.billingId);
+  const remarks = document.getElementById('reject_remarks').value.trim() || 'Rejected by admin.';
+  openConfirm(
+    'Reject Payment',
+    `Are you sure you want to reject the payment from <strong>${ho ? ho.name : 'Unknown'}</strong> for <strong>${bill ? bill.title : 'N/A'}</strong>?`,
+    () => rejectPayment(id, remarks)
+  );
+}
+
+function rejectPayment(id, remarks) {
   const p = db.getOne('payments', id);
   if (!p) return;
   p.status = 'rejected';
-  p.remarks = document.getElementById('reject_remarks').value.trim() || 'Rejected by admin.';
+  p.remarks = remarks;
   p.reviewedAt = new Date().toISOString().split('T')[0];
   db.save('payments', p);
   const ho = db.getOne('users', p.homeownerId);
@@ -2681,6 +2729,7 @@ function badgeHtml(status) {
     approved: '<span class="badge badge-green">Approved</span>',
     pending:  '<span class="badge badge-yellow">Pending</span>',
     rejected: '<span class="badge badge-red">Rejected</span>',
+    paid:     '<span class="badge badge-green">Paid</span>',
     active:   '<span class="badge badge-blue">Active</span>',
     inactive: '<span class="badge badge-gray">Inactive</span>',
     overdue:  '<span class="badge badge-red">Overdue</span>',
