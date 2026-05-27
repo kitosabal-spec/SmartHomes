@@ -375,6 +375,16 @@ function formatLocationPart(value, label) {
   return withoutLabel ? `${label} ${withoutLabel}` : '';
 }
 
+function formatBillingMonth(value) {
+  const match = /^(\d{4})-(\d{2})$/.exec(value || '');
+  if (!match) return '';
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  const date = new Date(year, monthIndex, 1);
+  if (!Number.isFinite(date.getTime())) return '';
+  return date.toLocaleString('default', { month: 'long', year: 'numeric' });
+}
+
 function getAssignedHomeownerIds(billing) {
   if (Array.isArray(billing?.assignedTo)) return billing.assignedTo;
   if (typeof billing?.assignedTo !== 'string') return [];
@@ -886,6 +896,7 @@ function openAddBillingModal() {
       <div class="form-group"><label>Amount (₱) *</label><input id="bf_amount" type="number" placeholder="1500"/></div>
       <div class="form-group"><label>Due Date *</label><input id="bf_due" type="date"/></div>
     </div>
+    <div class="form-group"><label>Billing Month *</label><input id="bf_month" type="month"/></div>
     <div class="form-group"><label>Description</label><textarea id="bf_desc" placeholder="Optional description..."></textarea></div>
     <div class="form-group">
       <label>Assign To</label>
@@ -919,6 +930,10 @@ function openProfessionalBillingModal() {
         <div class="form-group">
           <label>Title *</label>
           <input id="bf_title" placeholder="Monthly Association Dues"/>
+        </div>
+        <div class="form-group">
+          <label>Billing Month *</label>
+          <input id="bf_month" type="month"/>
         </div>
         <div class="grid-2 billing-compact-grid">
           <div class="form-group">
@@ -1018,13 +1033,16 @@ function saveAddBilling() {
   const title = document.getElementById('bf_title').value.trim();
   const amount = parseFloat(document.getElementById('bf_amount').value);
   const due = document.getElementById('bf_due').value;
-  if (!title || isNaN(amount) || !due) { showToast('error', 'Missing Fields', 'Fill all required fields.'); return; }
+  const billingMonth = formatBillingMonth(document.getElementById('bf_month')?.value);
+  if (!title || isNaN(amount) || !due || !billingMonth) { showToast('error', 'Missing Fields', 'Fill all required fields.'); return; }
   const checked = [...document.querySelectorAll('.ho-cb:checked')].map(c => c.value);
   if (!checked.length) { showToast('error', 'No Assignment', 'Select at least one homeowner.'); return; }
+  const finalTitle = title.toLowerCase().includes(billingMonth.toLowerCase()) ? title : `${title} - ${billingMonth}`;
+  const description = document.getElementById('bf_desc').value.trim();
   const bill = {
     id: db.newId('b'),
-    title, amount, dueDate: due,
-    description: document.getElementById('bf_desc').value.trim(),
+    title: finalTitle, amount, dueDate: due,
+    description: description ? `Billing month: ${billingMonth}. ${description}` : `Billing month: ${billingMonth}.`,
     assignedTo: checked, status: 'active',
     createdAt: new Date().toISOString().split('T')[0],
   };
@@ -1036,10 +1054,10 @@ function saveAddBilling() {
       db.save('users', user);
     }
   });
-  logAction(`Created billing: ${title} for ${checked.length} homeowner(s)`);
-  addNotification('New Billing Created', `"${title}" assigned to ${checked.length} homeowner(s).`);
+  logAction(`Created billing: ${finalTitle} for ${checked.length} homeowner(s)`);
+  addNotification('New Billing Created', `"${finalTitle}" assigned to ${checked.length} homeowner(s).`);
   closeModal();
-  showToast('success', 'Billing Created', `"${title}" has been created.`);
+  showToast('success', 'Billing Created', `"${finalTitle}" has been created.`);
   renderBilling();
 }
 
@@ -2005,7 +2023,10 @@ function renderHOBilling() {
             const overdue = b.dueDate < today && !paid;
             let statusBadge = paid ? badgeHtml('approved') : pend ? badgeHtml('pending') : overdue ? '<span class="badge badge-red">Overdue</span>' : '<span class="badge badge-gray">Unpaid</span>';
             return `<tr class="${overdue ? 'overdue-row' : ''}">
-              <td><strong>${b.title}</strong></td>
+              <td>
+                <strong>${b.title}</strong>
+                ${b.description ? `<div style="font-size:0.78rem;color:var(--text-3);margin-top:3px">${b.description}</div>` : ''}
+              </td>
               <td class="amount-due">₱${b.amount.toLocaleString()}</td>
               <td>${b.dueDate}${overdue ? ' — Overdue' : ''}</td>
               <td>${statusBadge}</td>
