@@ -368,6 +368,13 @@ function formatCurrency(value) {
   })}`;
 }
 
+function formatLocationPart(value, label) {
+  const cleaned = (value || '').trim().replace(/\s+/g, ' ');
+  if (!cleaned) return '';
+  const withoutLabel = cleaned.replace(new RegExp(`^${label}\\s*`, 'i'), '').trim();
+  return withoutLabel ? `${label} ${withoutLabel}` : '';
+}
+
 function getAssignedHomeownerIds(billing) {
   if (Array.isArray(billing?.assignedTo)) return billing.assignedTo;
   if (typeof billing?.assignedTo !== 'string') return [];
@@ -704,10 +711,13 @@ function openAddHomeownerModal() {
       <div class="form-group"><label>Email *</label><input id="f_email" type="email" placeholder="email@example.com"/></div>
     </div>
     <div class="grid-2">
-      <div class="form-group"><label>Block</label><input id="f_block" placeholder="e.g. Block 3"/></div>
-      <div class="form-group"><label>Lot</label><input id="f_lot" placeholder="e.g. Lot 7"/></div>
+      <div class="form-group"><label>Block</label><input id="f_block" inputmode="numeric" placeholder="e.g. 3"/></div>
+      <div class="form-group"><label>Lot</label><input id="f_lot" inputmode="numeric" placeholder="e.g. 7"/></div>
     </div>
-    <div class="form-group"><label>Contact Number</label><input id="f_contact" placeholder="e.g. 09171234567"/></div>
+    <div class="grid-2">
+      <div class="form-group"><label>Lot Area</label><input id="f_lotArea" type="number" min="0" step="0.01" placeholder="e.g. 120"/></div>
+      <div class="form-group"><label>Contact Number</label><input id="f_contact" placeholder="e.g. 09171234567"/></div>
+    </div>
   `, [
     { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
     { label: 'Add Homeowner', cls: 'btn-primary', action: saveAddHomeowner },
@@ -723,11 +733,15 @@ function saveAddHomeowner() {
   if (password.length < 6) { showToast('error', 'Weak Password', 'Password must be at least 6 characters.'); return; }
   const users = db.get('users');
   if (users.find(u => u.username === username)) { showToast('error', 'Duplicate Username', 'That username is already taken.'); return; }
+  const lotAreaValue = document.getElementById('f_lotArea').value.trim();
+  const lotArea = lotAreaValue ? Number(lotAreaValue) : 0;
+  if (!Number.isFinite(lotArea) || lotArea < 0) { showToast('error', 'Invalid Lot Area', 'Please enter a valid lot area.'); return; }
   const newUser = {
     id: db.newId('u'),
     username, password, role: 'homeowner', name, email,
-    block: document.getElementById('f_block').value.trim(),
-    lot: document.getElementById('f_lot').value.trim(),
+    block: formatLocationPart(document.getElementById('f_block').value, 'Block'),
+    lot: formatLocationPart(document.getElementById('f_lot').value, 'Lot'),
+    lotArea,
     contact: document.getElementById('f_contact').value.trim(),
     balance: 0,
   };
@@ -786,8 +800,8 @@ function saveEditHO(id) {
   if (!u) return;
   u.name = document.getElementById('e_name').value.trim() || u.name;
   u.email = document.getElementById('e_email').value.trim() || u.email;
-  u.block = document.getElementById('e_block').value.trim();
-  u.lot = document.getElementById('e_lot').value.trim();
+  u.block = formatLocationPart(document.getElementById('e_block').value, 'Block');
+  u.lot = formatLocationPart(document.getElementById('e_lot').value, 'Lot');
   u.contact = document.getElementById('e_contact').value.trim();
   db.save('users', u);
   logAction(`Updated homeowner profile: ${u.name}`);
