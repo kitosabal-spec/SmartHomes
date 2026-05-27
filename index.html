@@ -162,6 +162,7 @@
       <div class="pub-nav-links" id="pubNavLinks">
         <a href="javascript:void(0)" class="pub-nav-link active" onclick="pubScrollTo(event,'hero')">Home</a>
         <a href="javascript:void(0)" class="pub-nav-link" onclick="pubScrollTo(event,'announcements')">Announcements</a>
+        <a href="javascript:void(0)" class="pub-nav-link" onclick="pubScrollTo(event,'lostfound')">Lost &amp; Found</a>
         <a href="javascript:void(0)" class="pub-nav-link" onclick="pubScrollTo(event,'about')">About</a>
         <a href="javascript:void(0)" class="pub-nav-link" onclick="pubScrollTo(event,'contact')">Contact</a>
       </div>
@@ -184,6 +185,9 @@
     </a>
     <a href="javascript:void(0)" onclick="pubScrollTo(event,'announcements');togglePubNav()">
       <svg class="mob-ico"><use href="#ico-megaphone"/></svg> Announcements
+    </a>
+    <a href="javascript:void(0)" onclick="pubScrollTo(event,'lostfound');togglePubNav()">
+      <svg class="mob-ico"><use href="#ico-search"/></svg> Lost &amp; Found
     </a>
     <a href="javascript:void(0)" onclick="pubScrollTo(event,'about');togglePubNav()">
       <svg class="mob-ico"><use href="#ico-building"/></svg> About
@@ -268,6 +272,26 @@
   </section>
 
   <!-- ── ABOUT ── -->
+  <!-- LOST AND FOUND -->
+  <section class="pub-section pub-section-alt" id="lostfound">
+    <div class="pub-container">
+      <div class="pub-section-header">
+        <div class="pub-section-badge">Community Board</div>
+        <h2 class="pub-section-title">Lost and Found</h2>
+        <p class="pub-section-sub">View approved lost and found posts, or report an item for HOA review.</p>
+      </div>
+      <div class="pub-lostfound-actions">
+        <button class="pub-btn-cta" onclick="openLostFoundReportModal('Lost')">
+          <svg class="btn-ico"><use href="#ico-search"/></svg> Report Lost Item
+        </button>
+        <button class="pub-btn-secondary pub-btn-secondary-light" onclick="openLostFoundReportModal('Found')">
+          <svg class="btn-ico"><use href="#ico-check"/></svg> Report Found Item
+        </button>
+      </div>
+      <div class="pub-lostfound-grid" id="pubLostFoundGrid"></div>
+    </div>
+  </section>
+
   <section class="pub-section pub-section-alt" id="about">
     <div class="pub-container">
       <div class="pub-about-layout">

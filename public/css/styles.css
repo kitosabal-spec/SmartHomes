@@ -500,6 +500,112 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
   margin-top: 12px; font-size: 0.75rem; color: var(--text-3);
 }
 
+.pub-lostfound-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  margin: -24px 0 30px;
+}
+
+.pub-btn-secondary-light {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--teal-700);
+}
+
+.pub-btn-secondary-light:hover {
+  background: var(--teal-50);
+  border-color: var(--teal-300);
+  color: var(--teal-800);
+}
+
+.pub-lostfound-grid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.pub-lostfound-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+
+.pub-lostfound-card:hover {
+  box-shadow: var(--shadow);
+  transform: translateY(-2px);
+}
+
+.pub-lostfound-image {
+  align-items: center;
+  aspect-ratio: 16 / 9;
+  background: var(--surface-2);
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.pub-lostfound-image img {
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.pub-lostfound-image.empty svg {
+  color: var(--text-3);
+  height: 34px;
+  width: 34px;
+}
+
+.pub-lostfound-body { padding: 18px; }
+
+.pub-lostfound-meta {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.pub-lostfound-meta span:last-child {
+  color: var(--text-3);
+  font-size: 0.76rem;
+}
+
+.pub-lostfound-body h3 {
+  color: var(--text);
+  font-size: 1rem;
+  margin-bottom: 8px;
+}
+
+.pub-lostfound-body p {
+  color: var(--text-2);
+  font-size: 0.86rem;
+  line-height: 1.55;
+  margin-bottom: 12px;
+}
+
+.pub-lostfound-detail {
+  color: var(--text-3);
+  font-size: 0.8rem;
+  margin-top: 5px;
+}
+
+.pub-lostfound-detail strong { color: var(--text-2); }
+
+.pub-lostfound-contact {
+  border-top: 1px solid var(--border);
+  color: var(--teal-700);
+  font-size: 0.82rem;
+  font-weight: 700;
+  margin-top: 14px;
+  padding-top: 12px;
+}
+
 .pub-about-layout {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1119,6 +1225,44 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
 .stat-change { font-size: 0.78rem; margin-top: 8px; font-weight: 600; }
 .stat-change.up { color: var(--green-600); }
 .stat-change.down { color: var(--red-600); }
+
+.stats-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  margin-bottom: 18px;
+}
+
+.stats-grid .stat-card {
+  align-items: center;
+  border-radius: var(--radius);
+  display: flex;
+  gap: 12px;
+  min-height: 76px;
+  padding: 14px 16px;
+}
+
+.stats-grid .stat-icon {
+  flex-shrink: 0;
+  height: 38px;
+  margin-bottom: 0;
+  width: 38px;
+}
+
+.stats-grid .stat-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.stats-grid .stat-value {
+  font-size: 1.45rem;
+}
+
+.stats-grid .stat-label {
+  margin-top: 0;
+}
 
 .section-card {
   background: var(--surface);
@@ -1758,6 +1902,28 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
   font-weight: 700;
 }
 
+.lostfound-form-note {
+  background: var(--gold-50);
+  border: 1px solid var(--gold-100);
+  border-left: 3px solid var(--gold-400);
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  font-size: 0.84rem;
+  line-height: 1.55;
+  margin-bottom: 18px;
+  padding: 10px 14px;
+}
+
+.lostfound-admin-image {
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: block;
+  margin-bottom: 16px;
+  object-fit: cover;
+  width: 100%;
+}
+
 .billing-homeowner-list {
   display: grid;
   gap: 6px;
@@ -2065,6 +2231,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
   .hamburger { display: flex; }
   .content-area { padding: 18px; }
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .charts-row { grid-template-columns: 1fr; }
   .chart-card-wide { grid-column: 1; }
   .page-header { flex-direction: column; }
@@ -2100,6 +2267,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
 
 @media (max-width: 560px) {
   .stat-grid { grid-template-columns: 1fr; }
+  .stats-grid { grid-template-columns: 1fr; }
   .filters-row { flex-direction: column; }
   .toast-container { left: 12px; right: 12px; }
   .notif-panel { right: 8px; width: calc(100vw - 16px); }

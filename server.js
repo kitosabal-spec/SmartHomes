@@ -48,6 +48,11 @@ const tableConfig = {
     jsonColumns: [],
     booleanColumns: [],
   },
+  lostFound: {
+    columns: ['id', 'reportType', 'itemType', 'itemName', 'description', 'location', 'eventDate', 'contactName', 'contactNumber', 'image', 'status', 'remarks', 'createdAt', 'updatedAt', 'claimedAt'],
+    jsonColumns: [],
+    booleanColumns: [],
+  },
   auditLog: {
     columns: ['id', 'action', 'adminId', 'timestamp'],
     jsonColumns: [],
@@ -159,6 +164,7 @@ const seed = {
   complaints: [],
   amenityBookings: [],
   vehicleRegistrations: [],
+  lostFound: [],
   auditLog: [],
   notifications: [],
   appSettings: [{ id: 'duesRatePerSqm', value: '5.725' }],
@@ -349,6 +355,24 @@ async function createTables() {
     createdAt TEXT,
     updatedAt TEXT,
     releasedAt TEXT
+  )`);
+
+  await run(`CREATE TABLE IF NOT EXISTS lostFound (
+    id TEXT PRIMARY KEY,
+    reportType TEXT,
+    itemType TEXT,
+    itemName TEXT,
+    description TEXT,
+    location TEXT,
+    eventDate TEXT,
+    contactName TEXT,
+    contactNumber TEXT,
+    image TEXT,
+    status TEXT,
+    remarks TEXT,
+    createdAt TEXT,
+    updatedAt TEXT,
+    claimedAt TEXT
   )`);
 
   await run(`CREATE TABLE IF NOT EXISTS auditLog (
