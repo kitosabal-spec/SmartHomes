@@ -1240,6 +1240,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
   border-radius: var(--radius-lg);
   padding: 22px;
 }
+.chart-card-wide { grid-column: span 2; }
 .chart-card h4 { font-size: 0.92rem; color: var(--text); margin-bottom: 16px; }
 .chart-bars { display: flex; align-items: flex-end; gap: 8px; height: 160px; }
 .chart-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; }
@@ -1257,6 +1258,13 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
   font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; white-space: nowrap;
 }
 .chart-bar-label { font-size: 0.72rem; color: var(--text-3); text-align: center; }
+.chart-empty {
+  width: 100%;
+  align-self: center;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 0.86rem;
+}
 .donut-wrap { position: relative; width: 140px; height: 140px; margin: 0 auto; }
 .donut-wrap svg { width: 100%; height: 100%; }
 .donut-center {
@@ -1819,6 +1827,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
   .content-area { padding: 18px; }
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
   .charts-row { grid-template-columns: 1fr; }
+  .chart-card-wide { grid-column: 1; }
   .page-header { flex-direction: column; }
   .modal { max-width: 100%; border-radius: var(--radius-lg); }
   .billing-assignment-header,

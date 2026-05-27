@@ -356,6 +356,93 @@ function renderView(viewId) {
   if (renders[viewId]) renders[viewId]();
 }
 
+function toMoneyNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function formatCurrency(value) {
+  return `PHP ${toMoneyNumber(value).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function getAssignedHomeownerIds(billing) {
+  if (Array.isArray(billing?.assignedTo)) return billing.assignedTo;
+  if (typeof billing?.assignedTo !== 'string') return [];
+
+  try {
+    const parsed = JSON.parse(billing.assignedTo);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return billing.assignedTo.split(',').map(id => id.trim()).filter(Boolean);
+  }
+}
+
+function getBillingTotal(billing) {
+  return toMoneyNumber(billing?.amount) * getAssignedHomeownerIds(billing).length;
+}
+
+function getRecordYear(...values) {
+  for (const value of values) {
+    if (!value) continue;
+    const date = new Date(value);
+    if (Number.isFinite(date.getTime())) return date.getFullYear();
+  }
+  return null;
+}
+
+function getAnalysisYear(payments = db.get('payments'), billings = db.get('billings')) {
+  const years = [
+    ...payments.map(p => getRecordYear(p.reviewedAt, p.submittedAt)),
+    ...billings.map(b => getRecordYear(b.createdAt, b.dueDate)),
+  ].filter(Boolean);
+  return years.length ? Math.max(...years) : new Date().getFullYear();
+}
+
+function buildMonthlyRevenueData(payments, year) {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const totals = months.map(month => ({ m: month, v: 0 }));
+
+  payments
+    .filter(p => p.status === 'approved')
+    .forEach(p => {
+      const date = new Date(p.reviewedAt || p.submittedAt);
+      if (!Number.isFinite(date.getTime()) || date.getFullYear() !== year) return;
+      totals[date.getMonth()].v += toMoneyNumber(p.amount);
+    });
+
+  return totals;
+}
+
+function paymentStatusCounts(payments) {
+  return {
+    approved: payments.filter(p => p.status === 'approved').length,
+    pending: payments.filter(p => p.status === 'pending').length,
+    rejected: payments.filter(p => p.status === 'rejected').length,
+  };
+}
+
+function renderMonthlyBarChart(containerId, monthlyData, year) {
+  const barWrap = document.getElementById(containerId);
+  if (!barWrap) return;
+
+  const maxMonthly = Math.max(...monthlyData.map(d => d.v), 0);
+  if (maxMonthly <= 0) {
+    barWrap.innerHTML = `<div class="chart-empty">No approved payments recorded for ${year}.</div>`;
+    return;
+  }
+
+  barWrap.innerHTML = monthlyData.map(d => {
+    const pct = Math.max((d.v / maxMonthly) * 100, d.v > 0 ? 4 : 0);
+    return `
+      <div class="chart-bar-wrap">
+        <div class="chart-bar" style="height:${pct}%;background:linear-gradient(180deg,#2271c3,#4a90d9)" data-val="${formatCurrency(d.v)}"></div>
+      </div>`;
+  }).join('');
+}
+
 function toggleSidebar() {
   const sidebar = document.getElementById('sidebar');
   const overlay = document.querySelector('.sidebar-overlay');
@@ -392,13 +479,10 @@ function renderAdminDashboard() {
   const reviewedComplaints = complaints.filter(c => normalizeComplaintStatus(c.status) === 'Reviewed').length;
   const area = document.getElementById('contentArea');
 
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-  const monthlyData = months.map((m, i) => {
-    const base = [12000, 9500, 14500, 11000, 8500, 13000][i];
-    return { m, v: base };
-  });
-  const maxMonthly = Math.max(...monthlyData.map(d => d.v));
-  const paidCount = approved.length;
+  const analysisYear = getAnalysisYear(payments, billings);
+  const monthlyData = buildMonthlyRevenueData(payments, analysisYear);
+  const paymentCounts = paymentStatusCounts(payments);
+  const paymentTotal = paymentCounts.approved + paymentCounts.pending + paymentCounts.rejected;
 
   area.innerHTML = `
   <div class="page-header">
@@ -432,8 +516,8 @@ function renderAdminDashboard() {
   </div>
 
   <div class="charts-row">
-    <div class="chart-card" style="grid-column: span 2">
-      <h4>Monthly Revenue (2025)</h4>
+    <div class="chart-card chart-card-wide">
+      <h4>Monthly Revenue (${analysisYear})</h4>
       <div class="chart-bars" id="barChart"></div>
       <div style="display:flex;gap:8px;margin-top:6px">
         ${monthlyData.map(d => `<div style="flex:1;text-align:center;font-size:0.72rem;color:var(--text-3)">${d.m}</div>`).join('')}
@@ -443,9 +527,9 @@ function renderAdminDashboard() {
       <h4>Payment Status</h4>
       <div class="donut-wrap" id="donutChart"></div>
       <div class="donut-legend">
-        <div class="legend-item"><div class="legend-dot" style="background:#16a34a"></div> Approved (${paidCount})</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#eab308"></div> Pending (${pending.length})</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#dc2626"></div> Rejected (${payments.filter(p=>p.status==='rejected').length})</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#16a34a"></div> Approved (${paymentCounts.approved})</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#eab308"></div> Pending (${paymentCounts.pending})</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#dc2626"></div> Rejected (${paymentCounts.rejected})</div>
       </div>
     </div>
   </div>
@@ -469,20 +553,12 @@ function renderAdminDashboard() {
     </div>
   </div>`;
 
-  const barWrap = document.getElementById('barChart');
-  monthlyData.forEach(d => {
-    const pct = (d.v / maxMonthly) * 100;
-    barWrap.innerHTML += `
-      <div class="chart-bar-wrap">
-        <div class="chart-bar" style="height:${pct}%;background:linear-gradient(180deg,#2271c3,#4a90d9)" data-val="₱${d.v.toLocaleString()}"></div>
-      </div>`;
-  });
-
-  const total = paidCount + pending.length + payments.filter(p=>p.status==='rejected').length || 1;
+  renderMonthlyBarChart('barChart', monthlyData, analysisYear);
+  const total = paymentTotal;
   renderDonut('donutChart', [
-    { value: paidCount, color: '#16a34a' },
-    { value: pending.length, color: '#eab308' },
-    { value: payments.filter(p=>p.status==='rejected').length, color: '#dc2626' },
+    { value: paymentCounts.approved, color: '#16a34a' },
+    { value: paymentCounts.pending, color: '#eab308' },
+    { value: paymentCounts.rejected, color: '#dc2626' },
   ], total, 'Total', total);
 
   const tbody = document.getElementById('recentPaymentsTable');
@@ -522,10 +598,12 @@ function renderDonut(containerId, segments, total, centerLabel, centerVal) {
   if (!el) return;
   const r = 54, cx = 70, cy = 70;
   const circumference = 2 * Math.PI * r;
+  const safeTotal = total > 0 ? total : 1;
   let offset = 0;
   let paths = '';
   segments.forEach(seg => {
-    const frac = total > 0 ? seg.value / total : 0;
+    if (seg.value <= 0) return;
+    const frac = seg.value / safeTotal;
     const dash = frac * circumference;
     const gap = circumference - dash;
     paths += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${seg.color}" stroke-width="14"
@@ -1498,8 +1576,11 @@ function renderReports() {
   const approved = payments.filter(p => p.status === 'approved');
   const pending  = payments.filter(p => p.status === 'pending');
   const rejected = payments.filter(p => p.status === 'rejected');
-  const totalDue = billings.reduce((s, b) => s + b.amount * b.assignedTo.length, 0);
-  const totalPaid = approved.reduce((s, p) => s + p.amount, 0);
+  const totalDue = billings.reduce((s, b) => s + getBillingTotal(b), 0);
+  const totalPaid = approved.reduce((s, p) => s + toMoneyNumber(p.amount), 0);
+  const totalOutstanding = Math.max(0, totalDue - totalPaid);
+  const analysisYear = getAnalysisYear(payments, billings);
+  const monthlyData = buildMonthlyRevenueData(payments, analysisYear);
 
   const area = document.getElementById('contentArea');
   area.innerHTML = `
@@ -1510,7 +1591,7 @@ function renderReports() {
   <div class="report-summary-grid">
     <div class="report-summary-item"><div class="r-val">₱${totalDue.toLocaleString()}</div><div class="r-lbl">Total Billed</div></div>
     <div class="report-summary-item"><div class="r-val" style="color:var(--green-600)">₱${totalPaid.toLocaleString()}</div><div class="r-lbl">Total Collected</div></div>
-    <div class="report-summary-item"><div class="r-val" style="color:var(--red-600)">₱${(totalDue - totalPaid).toLocaleString()}</div><div class="r-lbl">Outstanding</div></div>
+    <div class="report-summary-item"><div class="r-val" style="color:var(--red-600)">₱${totalOutstanding.toLocaleString()}</div><div class="r-lbl">Outstanding</div></div>
     <div class="report-summary-item"><div class="r-val">${users.length}</div><div class="r-lbl">Total Homeowners</div></div>
   </div>
 
@@ -1534,18 +1615,27 @@ function renderReports() {
         <div class="legend-item"><div class="legend-dot" style="background:#dc2626"></div> Rejected (${complaints.filter(c=>c.status==='Rejected').length})</div>
       </div>
     </div>
+    <div class="chart-card chart-card-wide">
+      <h4>Monthly Collections (${analysisYear})</h4>
+      <div class="chart-bars" id="reportBarChart"></div>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        ${monthlyData.map(d => `<div style="flex:1;text-align:center;font-size:0.72rem;color:var(--text-3)">${d.m}</div>`).join('')}
+      </div>
+    </div>
     <div class="chart-card" style="flex:2">
       <h4>Collection by Billing</h4>
       <div class="table-wrapper"><table class="data-table">
         <thead><tr><th>Billing</th><th>Assigned</th><th>Collected</th><th>Rate</th></tr></thead>
         <tbody>
           ${billings.map(b => {
+            const assignedIds = getAssignedHomeownerIds(b);
             const billPayments = payments.filter(p => p.billingId === b.id && p.status === 'approved');
-            const rate = b.assignedTo.length > 0 ? Math.round((billPayments.length / b.assignedTo.length) * 100) : 0;
+            const paidHomeowners = new Set(billPayments.map(p => p.homeownerId));
+            const rate = assignedIds.length > 0 ? Math.round((paidHomeowners.size / assignedIds.length) * 100) : 0;
             return `<tr>
               <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${b.title}</td>
-              <td>${b.assignedTo.length}</td>
-              <td>${billPayments.length}</td>
+              <td>${assignedIds.length}</td>
+              <td>${paidHomeowners.size}</td>
               <td><div style="display:flex;align-items:center;gap:8px">
                 <div style="flex:1;height:6px;background:var(--border);border-radius:99px;overflow:hidden">
                   <div style="height:100%;width:${rate}%;background:${rate >= 70 ? 'var(--green-600)' : rate >= 40 ? 'var(--amber-500)' : 'var(--red-600)'};border-radius:99px;transition:width 0.6s ease"></div>
@@ -1553,7 +1643,7 @@ function renderReports() {
                 <span style="font-size:0.78rem;font-weight:700;color:var(--text-2)">${rate}%</span>
               </div></td>
             </tr>`;
-          }).join('')}
+          }).join('') || '<tr><td colspan="4"><div class="no-results">No billings on record.</div></td></tr>'}
         </tbody>
       </table></div>
     </div>
@@ -1597,14 +1687,16 @@ function renderReports() {
     </div>
   </div>`;
 
-  const total = approved.length + pending.length + rejected.length || 1;
+  renderMonthlyBarChart('reportBarChart', monthlyData, analysisYear);
+
+  const total = approved.length + pending.length + rejected.length;
   renderDonut('reportDonut', [
     { value: approved.length, color: '#16a34a' },
     { value: pending.length,  color: '#eab308' },
     { value: rejected.length, color: '#dc2626' },
   ], total, 'Payments', total);
 
-  const cmpTotal = complaints.length || 1;
+  const cmpTotal = complaints.length;
   renderDonut('complaintDonut', [
     { value: complaints.filter(c=>normalizeComplaintStatus(c.status)==='Reviewed').length, color: '#2271c3' },
     { value: complaints.filter(c=>c.status==='In Progress').length, color: '#d97706' },
