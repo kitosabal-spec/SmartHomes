@@ -49,8 +49,8 @@ const tableConfig = {
     booleanColumns: [],
   },
   notifications: {
-    columns: ['id', 'title', 'message', 'time'],
-    jsonColumns: [],
+    columns: ['id', 'title', 'message', 'time', 'audience', 'targetIds', 'dismissedBy'],
+    jsonColumns: ['targetIds', 'dismissedBy'],
     booleanColumns: [],
   },
   appSettings: {
@@ -337,8 +337,14 @@ async function createTables() {
     id TEXT PRIMARY KEY,
     title TEXT,
     message TEXT,
-    time TEXT
+    time TEXT,
+    audience TEXT DEFAULT 'all',
+    targetIds TEXT,
+    dismissedBy TEXT
   )`);
+  await run(`ALTER TABLE notifications ADD COLUMN audience TEXT DEFAULT 'all'`).catch(() => {});
+  await run(`ALTER TABLE notifications ADD COLUMN targetIds TEXT`).catch(() => {});
+  await run(`ALTER TABLE notifications ADD COLUMN dismissedBy TEXT`).catch(() => {});
 
   await run(`CREATE TABLE IF NOT EXISTS appSettings (
     id TEXT PRIMARY KEY,
