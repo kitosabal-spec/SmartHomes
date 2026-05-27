@@ -43,6 +43,11 @@ const tableConfig = {
     jsonColumns: [],
     booleanColumns: [],
   },
+  vehicleRegistrations: {
+    columns: ['id', 'homeownerId', 'ownerName', 'block', 'lot', 'plateNumber', 'vehicleType', 'registrantType', 'fee', 'registrationStatus', 'paymentStatus', 'stickerNumber', 'remarks', 'createdAt', 'updatedAt', 'releasedAt'],
+    jsonColumns: [],
+    booleanColumns: [],
+  },
   auditLog: {
     columns: ['id', 'action', 'adminId', 'timestamp'],
     jsonColumns: [],
@@ -153,6 +158,7 @@ const seed = {
   announcements: [],
   complaints: [],
   amenityBookings: [],
+  vehicleRegistrations: [],
   auditLog: [],
   notifications: [],
   appSettings: [{ id: 'duesRatePerSqm', value: '5.725' }],
@@ -324,6 +330,25 @@ async function createTables() {
     adminRemarks TEXT,
     createdAt TEXT,
     reviewedAt TEXT
+  )`);
+
+  await run(`CREATE TABLE IF NOT EXISTS vehicleRegistrations (
+    id TEXT PRIMARY KEY,
+    homeownerId TEXT,
+    ownerName TEXT,
+    block TEXT,
+    lot TEXT,
+    plateNumber TEXT,
+    vehicleType TEXT,
+    registrantType TEXT,
+    fee REAL,
+    registrationStatus TEXT,
+    paymentStatus TEXT,
+    stickerNumber TEXT UNIQUE,
+    remarks TEXT,
+    createdAt TEXT,
+    updatedAt TEXT,
+    releasedAt TEXT
   )`);
 
   await run(`CREATE TABLE IF NOT EXISTS auditLog (
