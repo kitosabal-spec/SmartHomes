@@ -401,6 +401,36 @@ function getBillingTotal(billing) {
   return toMoneyNumber(billing?.amount) * getAssignedHomeownerIds(billing).length;
 }
 
+function calculateUserOutstandingBalance(userId) {
+  const billings = db.get('billings');
+  const activeBillingIds = new Set(billings.map(b => b.id));
+  const totalDue = billings
+    .filter(billing => getAssignedHomeownerIds(billing).includes(userId))
+    .reduce((sum, billing) => sum + toMoneyNumber(billing.amount), 0);
+  const totalPaid = db.get('payments')
+    .filter(payment =>
+      payment.homeownerId === userId &&
+      payment.status === 'approved' &&
+      activeBillingIds.has(payment.billingId)
+    )
+    .reduce((sum, payment) => sum + toMoneyNumber(payment.amount), 0);
+
+  return Math.max(0, Math.round((totalDue - totalPaid) * 100) / 100);
+}
+
+function syncHomeownerBalances() {
+  db.get('users')
+    .filter(user => user.role === 'homeowner')
+    .forEach(user => {
+      const balance = calculateUserOutstandingBalance(user.id);
+      if (toMoneyNumber(user.balance) !== balance) {
+        user.balance = balance;
+        db.save('users', user);
+      }
+      if (currentUser && currentUser.id === user.id) currentUser = user;
+    });
+}
+
 function getRecordYear(...values) {
   for (const value of values) {
     if (!value) continue;
@@ -486,12 +516,15 @@ function setupSidebarOverlay() {
 
 
 function renderAdminDashboard() {
+  syncHomeownerBalances();
   const homeowners = db.get('users').filter(u => u.role === 'homeowner');
   const payments = db.get('payments');
   const approved = payments.filter(p => p.status === 'approved');
   const pending  = payments.filter(p => p.status === 'pending');
   const totalCollected = approved.reduce((s, p) => s + p.amount, 0);
   const billings = db.get('billings');
+  const totalBilled = billings.reduce((sum, billing) => sum + getBillingTotal(billing), 0);
+  const totalOutstanding = homeowners.reduce((sum, user) => sum + toMoneyNumber(user.balance), 0);
   const complaints = db.get('complaints');
   const reviewedComplaints = complaints.filter(c => normalizeComplaintStatus(c.status) === 'Reviewed').length;
   const area = document.getElementById('contentArea');
@@ -519,6 +552,16 @@ function renderAdminDashboard() {
       <div class="stat-icon"><svg width="22" height="22"><use href="#ico-credit"/></svg></div>
       <div class="stat-value">₱${totalCollected.toLocaleString()}</div>
       <div class="stat-label">Total Collected</div>
+    </div>
+    <div class="stat-card" style="--card-accent:#177a80;--card-accent-bg:#e5f6f7">
+      <div class="stat-icon"><svg width="22" height="22"><use href="#ico-file"/></svg></div>
+      <div class="stat-value">₱${totalBilled.toLocaleString()}</div>
+      <div class="stat-label">Total Billed</div>
+    </div>
+    <div class="stat-card" style="--card-accent:#dc2626;--card-accent-bg:#fee2e2">
+      <div class="stat-icon"><svg width="22" height="22"><use href="#ico-clock"/></svg></div>
+      <div class="stat-value">₱${totalOutstanding.toLocaleString()}</div>
+      <div class="stat-label">Outstanding Balance</div>
     </div>
     <div class="stat-card" style="--card-accent:#eab308;--card-accent-bg:#fef9c3">
       <div class="stat-icon"><svg width="22" height="22"><use href="#ico-clock"/></svg></div>
@@ -548,6 +591,29 @@ function renderAdminDashboard() {
         <div class="legend-item"><div class="legend-dot" style="background:#eab308"></div> Pending (${paymentCounts.pending})</div>
         <div class="legend-item"><div class="legend-dot" style="background:#dc2626"></div> Rejected (${paymentCounts.rejected})</div>
       </div>
+    </div>
+  </div>
+
+  <div class="section-card" style="margin-bottom:18px">
+    <div class="section-card-header">
+      <div><h3>Recent Billings</h3><p>Latest charges assigned to homeowners</p></div>
+      <button class="btn btn-secondary btn-sm" onclick="navigate('billing')">View All</button>
+    </div>
+    <div class="section-card-body no-pad">
+      <table class="data-table">
+        <thead><tr><th>Billing</th><th>Amount</th><th>Due Date</th><th>Assigned</th></tr></thead>
+        <tbody>
+          ${[...billings].sort((a, b) => `${b.createdAt || ''}-${b.id || ''}`.localeCompare(`${a.createdAt || ''}-${a.id || ''}`)).slice(0, 5).map(b => {
+            const assignedIds = getAssignedHomeownerIds(b);
+            return `<tr>
+              <td><strong>${b.title}</strong></td>
+              <td class="amount-due">₱${toMoneyNumber(b.amount).toLocaleString()}</td>
+              <td>${b.dueDate || 'N/A'}</td>
+              <td>${assignedIds.length} homeowner(s)</td>
+            </tr>`;
+          }).join('') || '<tr><td colspan="4"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-file"/></svg>No billings created yet.</div></td></tr>'}
+        </tbody>
+      </table>
     </div>
   </div>
 
@@ -643,6 +709,7 @@ function renderDonut(containerId, segments, total, centerLabel, centerVal) {
 
 
 function renderHomeowners() {
+  syncHomeownerBalances();
   const area = document.getElementById('contentArea');
   const blockOptions = [...new Set(db.get('users')
     .filter(u => u.role === 'homeowner' && u.block)
@@ -834,6 +901,7 @@ function confirmDeleteHO(id) {
 
 
 function renderBilling() {
+  syncHomeownerBalances();
   const billings = db.get('billings');
   const area = document.getElementById('contentArea');
   area.innerHTML = `
@@ -1133,7 +1201,14 @@ function confirmDeleteBilling(id) {
   if (!b) return;
   openModal('Delete Billing', `<p>Delete <strong>${b.title}</strong>? This cannot be undone.</p>`, [
     { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
-    { label: 'Delete', cls: 'btn-danger', action: () => { db.delete('billings', id); logAction(`Deleted billing: ${b.title}`); closeModal(); showToast('success', 'Deleted', 'Billing removed.'); renderBilling(); } },
+    { label: 'Delete', cls: 'btn-danger', action: () => {
+      db.delete('billings', id);
+      syncHomeownerBalances();
+      logAction(`Deleted billing: ${b.title}`);
+      closeModal();
+      showToast('success', 'Deleted', 'Billing removed and balances updated.');
+      renderBilling();
+    } },
   ]);
 }
 
@@ -1298,7 +1373,7 @@ function approvePayment(id) {
   p.reviewedAt = new Date().toISOString().split('T')[0];
   db.save('payments', p);
   const ho = db.getOne('users', p.homeownerId);
-  if (ho) { ho.balance = Math.max(0, (ho.balance || 0) - p.amount); db.save('users', ho); }
+  syncHomeownerBalances();
   const bill = db.getOne('billings', p.billingId);
   logAction(`Approved payment from ${ho ? ho.name : 'Unknown'} for "${bill ? bill.title : 'N/A'}"`);
   addNotification('Payment Approved', `Payment from ${ho ? ho.name : 'Unknown'} approved.`);
@@ -1650,6 +1725,7 @@ function confirmDeleteAnnouncement(id) {
 
 
 function renderReports() {
+  syncHomeownerBalances();
   const payments = db.get('payments');
   const billings = db.get('billings');
   const users = db.get('users').filter(u => u.role === 'homeowner');
@@ -1971,6 +2047,7 @@ function confirmResetData() {
 
 
 function renderHODashboard() {
+  syncHomeownerBalances();
   const myBillings = db.get('billings').filter(b => b.assignedTo.includes(currentUser.id));
   const myPayments = db.get('payments').filter(p => p.homeownerId === currentUser.id);
   const myComplaints = db.get('complaints').filter(c => c.homeownerId === currentUser.id);
@@ -2055,6 +2132,7 @@ function renderHODashboard() {
 }
 
 function renderHOBilling() {
+  syncHomeownerBalances();
   const myBillings = db.get('billings').filter(b => b.assignedTo.includes(currentUser.id));
   const myPayments = db.get('payments').filter(p => p.homeownerId === currentUser.id);
   const today = new Date().toISOString().split('T')[0];
@@ -2385,6 +2463,7 @@ function renderHOAnnouncements() {
 }
 
 function renderHOProfile() {
+  syncHomeownerBalances();
   const u = currentUser;
   const area = document.getElementById('contentArea');
   area.innerHTML = `
