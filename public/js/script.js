@@ -2261,7 +2261,7 @@ function renderPublicLostFound() {
 
   grid.innerHTML = posts.map(report => `
     <article class="pub-lostfound-card">
-      ${report.image ? `<div class="pub-lostfound-image"><img src="${report.image}" alt="${report.itemName}"></div>` : `<div class="pub-lostfound-image empty"><svg><use href="#ico-search"/></svg></div>`}
+      ${report.image ? `<div class="pub-lostfound-image"><img src="${report.image}" alt="${report.itemName}"></div>` : ''}
       <div class="pub-lostfound-body">
         <div class="pub-lostfound-meta">${lostFoundTypeBadge(report.reportType)}<span>${report.eventDate || 'No date'}</span></div>
         <h3>${report.itemName}</h3>
