@@ -74,6 +74,61 @@ const adminUser = {
   balance: 0,
 };
 
+const staffUsers = [
+  {
+    id: 'staff-president',
+    username: 'president',
+    password: 'president123',
+    role: 'president',
+    name: 'HOA President',
+    email: 'president@sanalfonsohomes.com',
+    block: null,
+    lot: null,
+    lotArea: null,
+    contact: null,
+    balance: 0,
+  },
+  {
+    id: 'staff-security',
+    username: 'security',
+    password: 'security123',
+    role: 'security',
+    name: 'Security Guard',
+    email: 'security@sanalfonsohomes.com',
+    block: null,
+    lot: null,
+    lotArea: null,
+    contact: null,
+    balance: 0,
+  },
+  {
+    id: 'staff-treasurer',
+    username: 'treasurer',
+    password: 'treasurer123',
+    role: 'treasurer',
+    name: 'HOA Treasurer',
+    email: 'treasurer@sanalfonsohomes.com',
+    block: null,
+    lot: null,
+    lotArea: null,
+    contact: null,
+    balance: 0,
+  },
+  {
+    id: 'staff-auditor',
+    username: 'auditor',
+    password: 'auditor123',
+    role: 'auditor',
+    name: 'HOA Auditor',
+    email: 'auditor@sanalfonsohomes.com',
+    block: null,
+    lot: null,
+    lotArea: null,
+    contact: null,
+    balance: 0,
+  },
+];
+
 function loadHomeownerSeed() {
   const seedPath = path.join(__dirname, 'data', 'homeowners.seed.json');
   try {
@@ -92,7 +147,7 @@ function loadHomeownerSeed() {
 }
 
 const seed = {
-  users: [adminUser, ...loadHomeownerSeed()],
+  users: [adminUser, ...staffUsers, ...loadHomeownerSeed()],
   billings: [],
   payments: [],
   announcements: [],
@@ -302,6 +357,15 @@ async function seedIfEmpty() {
   }
 }
 
+async function ensureStaffUsers() {
+  for (const user of [adminUser, ...staffUsers]) {
+    const existing = await get('SELECT id FROM users WHERE username = ?', [user.username]);
+    if (!existing) {
+      await saveRecord('users', user);
+    }
+  }
+}
+
 async function resetDatabase() {
   for (const table of Object.keys(tableConfig)) {
     await run(`DELETE FROM ${table}`);
@@ -388,6 +452,7 @@ app.use((err, req, res, next) => {
 
 createTables()
   .then(seedIfEmpty)
+  .then(ensureStaffUsers)
   .then(() => {
     app.listen(PORT, () => {
       console.log(`SmartHood is running at http://localhost:${PORT}`);

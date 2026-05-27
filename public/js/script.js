@@ -6,11 +6,20 @@ let currentRole = 'admin';
 let currentView = 'dashboard';
 let notifications = [];
 let pendingPostLoginView = null;
+let pendingPaymentSubmission = null;
 
 const ROLES = { ADMIN: 'admin', HOMEOWNER: 'homeowner' };
 const COMPLAINT_STATUSES = ['Reviewed', 'In Progress', 'Resolved', 'Rejected'];
 const DEFAULT_DUES_RATE_PER_SQM = 5.725;
 const AMENITIES = ['Basketball Court', 'Clubhouse', 'Chairs', 'Tables', 'Ladder'];
+const ROLE_LABELS = {
+  admin: 'Administrator',
+  president: 'President',
+  security: 'Security Guard',
+  treasurer: 'Treasurer',
+  auditor: 'Auditor',
+  homeowner: 'Homeowner',
+};
 
 const ADMIN_NAV = [
   { id: 'dashboard',      icon: 'ico-dashboard',  label: 'Dashboard',       section: 'MAIN' },
@@ -34,6 +43,24 @@ const HOMEOWNER_NAV = [
   { id: 'ho-complaints',    icon: 'ico-flag',       label: 'File a Complaint',   section: 'ACCOUNT' },
   { id: 'ho-announcements', icon: 'ico-megaphone',  label: 'Announcements',   section: 'INFO' },
   { id: 'ho-profile',       icon: 'ico-user',       label: 'My Profile',      section: 'ACCOUNT' },
+];
+
+const PRESIDENT_NAV = [
+  { id: 'complaints', icon: 'ico-flag', label: 'Complaints', section: 'MANAGEMENT' },
+];
+
+const SECURITY_NAV = [
+  { id: 'complaints', icon: 'ico-flag', label: 'Complaints', section: 'VIEW' },
+];
+
+const TREASURER_NAV = [
+  { id: 'payments', icon: 'ico-credit', label: 'Payment Records', section: 'FINANCE' },
+  { id: 'reports',  icon: 'ico-chart',  label: 'Financial Reports', section: 'FINANCE' },
+];
+
+const AUDITOR_NAV = [
+  { id: 'reports', icon: 'ico-chart', label: 'Financial Reports', section: 'AUDIT' },
+  { id: 'billing', icon: 'ico-file',  label: 'Billing Status',     section: 'AUDIT' },
 ];
 
 
@@ -275,19 +302,49 @@ function initApp() {
   setupSidebarOverlay();
   const defaultView = pendingPostLoginView && currentUser.role === 'homeowner'
     ? pendingPostLoginView
-    : currentUser.role === 'admin' ? 'dashboard' : 'ho-dashboard';
+    : getDefaultViewForRole(currentUser.role);
   pendingPostLoginView = null;
   navigate(defaultView);
   updateNotifBadge();
 }
 
+function getNavForRole(role) {
+  const navMap = {
+    admin: ADMIN_NAV,
+    homeowner: HOMEOWNER_NAV,
+    president: PRESIDENT_NAV,
+    security: SECURITY_NAV,
+    treasurer: TREASURER_NAV,
+    auditor: AUDITOR_NAV,
+  };
+  return navMap[role] || HOMEOWNER_NAV;
+}
+
+function getDefaultViewForRole(role) {
+  return (getNavForRole(role)[0] || HOMEOWNER_NAV[0]).id;
+}
+
+function isAdmin() { return currentUser?.role === 'admin'; }
+function canManageComplaints() { return ['admin', 'president'].includes(currentUser?.role); }
+function canViewAdminComplaints() { return ['admin', 'president', 'security'].includes(currentUser?.role); }
+function canManagePayments() { return isAdmin(); }
+function canViewPayments() { return ['admin', 'treasurer'].includes(currentUser?.role); }
+function canManageBilling() { return isAdmin(); }
+function canViewBillingStatus() { return ['admin', 'auditor'].includes(currentUser?.role); }
+function canViewReports() { return ['admin', 'treasurer', 'auditor'].includes(currentUser?.role); }
+
+function canAccessView(viewId) {
+  if (isAdmin()) return true;
+  return getNavForRole(currentUser?.role).some(item => item.id === viewId);
+}
+
 function buildSidebar() {
-  const nav = currentUser.role === 'admin' ? ADMIN_NAV : HOMEOWNER_NAV;
+  const nav = getNavForRole(currentUser.role);
   const initials = currentUser.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
   document.getElementById('sidebarAvatar').textContent = initials;
   document.getElementById('topbarAvatar').textContent = initials;
   document.getElementById('sidebarName').textContent = currentUser.name;
-  document.getElementById('sidebarRole').textContent = currentUser.role === 'admin' ? 'Administrator' : 'Homeowner';
+  document.getElementById('sidebarRole').textContent = ROLE_LABELS[currentUser.role] || currentUser.role;
 
   let lastSection = '';
   const navEl = document.getElementById('sidebarNav');
@@ -295,7 +352,7 @@ function buildSidebar() {
 
   const annCount = db.get('announcements').length;
   const openComplaints = db.get('complaints').filter(c =>
-    currentUser.role === 'admin'
+    canViewAdminComplaints()
       ? normalizeComplaintStatus(c.status) === 'Reviewed'
       : c.homeownerId === currentUser.id && normalizeComplaintStatus(c.status) === 'Reviewed'
   ).length;
@@ -327,11 +384,14 @@ function buildSidebar() {
 }
 
 function navigate(viewId) {
+  if (!canAccessView(viewId)) {
+    viewId = getDefaultViewForRole(currentUser.role);
+  }
   currentView = viewId;
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.view === viewId);
   });
-  const allNav = [...ADMIN_NAV, ...HOMEOWNER_NAV];
+  const allNav = [...ADMIN_NAV, ...HOMEOWNER_NAV, ...PRESIDENT_NAV, ...SECURITY_NAV, ...TREASURER_NAV, ...AUDITOR_NAV];
   const navItem = allNav.find(n => n.id === viewId);
   document.getElementById('topbarTitle').textContent = navItem ? navItem.label : 'Dashboard';
   renderView(viewId);
@@ -934,14 +994,15 @@ function confirmDeleteHO(id) {
 function renderBilling() {
   syncHomeownerBalances();
   const billings = db.get('billings');
+  const manageBilling = canManageBilling();
   const area = document.getElementById('contentArea');
   area.innerHTML = `
   <div class="page-header">
-    <div class="page-header-left"><h2>Billing Management</h2><p>Create and manage billing records for homeowners.</p></div>
-    <div class="page-header-actions">
+    <div class="page-header-left"><h2>${manageBilling ? 'Billing Management' : 'Billing Status'}</h2><p>${manageBilling ? 'Create and manage billing records for homeowners.' : 'View homeowner billing status and collection progress.'}</p></div>
+    ${manageBilling ? `<div class="page-header-actions">
       <button class="btn btn-secondary" onclick="autoGenerateLotAreaMonthlyDues()">Auto-Generate Dues</button>
       <button class="btn btn-primary" onclick="openProfessionalBillingModal()">Create Billing</button>
-    </div>
+    </div>` : ''}
   </div>
   <div class="section-card">
     <div class="section-card-header">
@@ -982,7 +1043,7 @@ function renderBillingTable(billings) {
       <td>${badgeHtml(collectionStatus)}</td>
       <td><div class="td-actions">
         <button class="btn btn-secondary btn-sm" onclick="viewBillingDetail('${b.id}')">View</button>
-        <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteBilling('${b.id}')" title="Delete"><svg width="14" height="14"><use href="#ico-trash"/></svg></button>
+        ${canManageBilling() ? `<button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteBilling('${b.id}')" title="Delete"><svg width="14" height="14"><use href="#ico-trash"/></svg></button>` : ''}
       </div></td>
     </tr>`;
   }).join('');
@@ -1022,6 +1083,7 @@ function toggleSelectAll(cb) {
 }
 
 function openProfessionalBillingModal() {
+  if (!canManageBilling()) { showToast('error', 'Access Denied', 'Only the admin can create billings.'); return; }
   const homeowners = db.get('users').filter(u => u.role === 'homeowner');
   openModal('Create Billing', `
     <div class="billing-form">
@@ -1229,6 +1291,7 @@ function viewBillingDetail(id) {
 }
 
 function confirmDeleteBilling(id) {
+  if (!canManageBilling()) { showToast('error', 'Access Denied', 'Only the admin can delete billings.'); return; }
   const b = db.getOne('billings', id);
   if (!b) return;
   openModal('Delete Billing', `<p>Delete <strong>${b.title}</strong>? This cannot be undone.</p>`, [
@@ -1479,18 +1542,23 @@ function confirmSubmitAmenityBooking() {
     showToast('error', 'Not Available', `${amenity} is already booked or pending for that date.`);
     return;
   }
-  openConfirm('Submit Amenity Request', `Submit a request for <strong>${amenity}</strong> on <strong>${formatAmenityDate(bookingDate)}</strong>?`, submitAmenityBooking);
+  const purpose = document.getElementById('ab_purpose').value.trim();
+  openConfirm(
+    'Submit Amenity Request',
+    `Submit a request for <strong>${amenity}</strong> on <strong>${formatAmenityDate(bookingDate)}</strong>?`,
+    () => submitAmenityBooking({ amenity, bookingDate, startTime, endTime, purpose })
+  );
 }
 
-function submitAmenityBooking() {
+function submitAmenityBooking({ amenity, bookingDate, startTime, endTime, purpose }) {
   const booking = {
     id: db.newId('ab'),
     homeownerId: currentUser.id,
-    amenity: document.getElementById('ab_amenity').value,
-    bookingDate: document.getElementById('ab_date').value,
-    startTime: document.getElementById('ab_start').value,
-    endTime: document.getElementById('ab_end').value,
-    purpose: document.getElementById('ab_purpose').value.trim(),
+    amenity,
+    bookingDate,
+    startTime,
+    endTime,
+    purpose,
     status: 'Pending',
     adminRemarks: '',
     createdAt: new Date().toISOString().split('T')[0],
@@ -1620,10 +1688,12 @@ function amenityStatusBadge(status) {
 }
 
 function renderPayments() {
+  if (!canViewPayments()) { showToast('error', 'Access Denied', 'You do not have access to payment records.'); return; }
+  const managePayments = canManagePayments();
   const area = document.getElementById('contentArea');
   area.innerHTML = `
   <div class="page-header">
-    <div class="page-header-left"><h2>Payment Management</h2><p>Review and process homeowner payment submissions.</p></div>
+    <div class="page-header-left"><h2>${managePayments ? 'Payment Management' : 'Payment Records'}</h2><p>${managePayments ? 'Review and process homeowner payment submissions.' : 'View homeowner payment records.'}</p></div>
   </div>
   <div class="section-card">
     <div class="section-card-header">
@@ -1666,7 +1736,7 @@ function renderPaymentTable(filtered = null) {
       <td>${badgeHtml(p.status)}</td>
       <td><div class="td-actions">
         <button class="btn btn-secondary btn-sm" onclick="viewPaymentDetail('${p.id}')">Review</button>
-        ${p.status === 'pending' ? `
+        ${canManagePayments() && p.status === 'pending' ? `
           <button class="btn btn-success btn-sm" onclick="approvePayment('${p.id}')" title="Approve">&#10003;</button>
           <button class="btn btn-danger btn-sm" onclick="openRejectPayment('${p.id}')" title="Reject">&#10007;</button>
         ` : ''}
@@ -1714,6 +1784,7 @@ function viewPaymentDetail(id) {
 }
 
 function approvePayment(id) {
+  if (!canManagePayments()) { showToast('error', 'Access Denied', 'Only the admin can approve payments.'); return; }
   const p = db.getOne('payments', id);
   if (!p) return;
   const ho = db.getOne('users', p.homeownerId);
@@ -1741,6 +1812,7 @@ function applyApprovePayment(id) {
 }
 
 function openRejectPayment(id) {
+  if (!canManagePayments()) { showToast('error', 'Access Denied', 'Only the admin can reject payments.'); return; }
   openModal('Reject Payment', `
     <p style="color:var(--text-2);margin-bottom:16px">Please provide a reason for rejection.</p>
     <div class="form-group"><label>Remarks</label><textarea id="reject_remarks" placeholder="e.g. Blurry receipt image..."></textarea></div>
@@ -1782,7 +1854,9 @@ function rejectPayment(id, remarks) {
 
 
 function renderAdminComplaints() {
+  if (!canViewAdminComplaints()) { showToast('error', 'Access Denied', 'You do not have access to complaints.'); return; }
   const complaints = db.get('complaints');
+  const manageComplaints = canManageComplaints();
   const area = document.getElementById('contentArea');
 
   const reviewed   = complaints.filter(c => normalizeComplaintStatus(c.status) === 'Reviewed').length;
@@ -1794,7 +1868,7 @@ function renderAdminComplaints() {
   <div class="page-header">
     <div class="page-header-left">
       <h2>Complaint Management</h2>
-      <p>Review and resolve complaints submitted by homeowners.</p>
+      <p>${manageComplaints ? 'Review and resolve complaints submitted by homeowners.' : 'View complaints submitted by homeowners.'}</p>
     </div>
   </div>
 
@@ -1828,7 +1902,7 @@ function renderAdminComplaints() {
 
   <div class="section-card">
     <div class="section-card-header">
-      <div><h3>All Complaints</h3><p>Click "Manage" to review, respond, and update status.</p></div>
+      <div><h3>All Complaints</h3><p>${manageComplaints ? 'Click "Manage" to review, respond, and update status.' : 'Review complaint details and current status.'}</p></div>
       <div class="filters-row">
         <div class="search-box">
           <span class="search-icon"><svg width="15" height="15"><use href="#ico-search"/></svg></span>
@@ -1898,7 +1972,7 @@ function renderAdminComplaintTable(filtered = null) {
       <td>${c.dateFiled}</td>
       <td>${complaintStatusBadge(c.status)}</td>
       <td><div class="td-actions">
-        <button class="btn btn-primary btn-sm" onclick="openManageComplaint('${c.id}')">Manage</button>
+        <button class="btn ${canManageComplaints() ? 'btn-primary' : 'btn-secondary'} btn-sm" onclick="openManageComplaint('${c.id}')">${canManageComplaints() ? 'Manage' : 'View'}</button>
       </div></td>
     </tr>`;
   }).join('');
@@ -1926,6 +2000,19 @@ function openManageComplaint(id) {
   const c = db.getOne('complaints', id);
   if (!c) return;
   const ho = db.getOne('users', c.homeownerId);
+  if (!canManageComplaints()) {
+    openModal(`Complaint - ${ho ? ho.name : 'Unknown'}`, `
+      <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:18px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px">
+          <div>${complaintCategoryBadge(c.category)}</div>
+          <div>${complaintStatusBadge(c.status)}</div>
+        </div>
+        <p style="font-size:0.9rem;color:var(--text-2);line-height:1.6">${c.description}</p>
+        ${c.adminResponse ? `<p style="margin-top:12px;font-size:0.85rem;color:var(--text-2)"><strong>Response:</strong> ${c.adminResponse}</p>` : ''}
+      </div>
+    `, [{ label: 'Close', cls: 'btn-secondary', action: closeModal }]);
+    return;
+  }
 
   const currentStatus = normalizeComplaintStatus(c.status);
   const statusOptions = COMPLAINT_STATUSES.map(s =>
@@ -1970,6 +2057,7 @@ function openManageComplaint(id) {
 }
 
 function saveComplaintManagement(id) {
+  if (!canManageComplaints()) { showToast('error', 'Access Denied', 'You cannot update complaints.'); return; }
   const c = db.getOne('complaints', id);
   if (!c) return;
 
@@ -2097,6 +2185,7 @@ function confirmDeleteAnnouncement(id) {
 
 
 function renderReports() {
+  if (!canViewReports()) { showToast('error', 'Access Denied', 'You do not have access to financial reports.'); return; }
   syncHomeownerBalances();
   const payments = db.get('payments');
   const billings = db.get('billings');
@@ -2573,13 +2662,39 @@ function confirmSubmitPayment() {
   const refNum = document.getElementById('pay_ref').value.trim();
   if (!billingId || isNaN(amount) || !refNum) { showToast('error', 'Missing Fields', 'Please fill in all required fields.'); return; }
   const bill = db.getOne('billings', billingId);
+  pendingPaymentSubmission = { billingId, amount, refNum };
   openConfirm('Submit Payment', `Are you sure you want to submit a payment of <strong>₱${amount.toLocaleString()}</strong> for <strong>${bill ? bill.title : ''}</strong>? Reference: ${refNum}`, submitPayment);
 }
 
 function submitPayment() {
+  if (!document.getElementById('pay_bill') && pendingPaymentSubmission) {
+    const { billingId, amount, refNum } = pendingPaymentSubmission;
+    pendingPaymentSubmission = null;
+    return savePaymentSubmission(billingId, amount, refNum);
+  }
   const billingId = document.getElementById('pay_bill').value;
   const amount = parseFloat(document.getElementById('pay_amount').value);
   const refNum = document.getElementById('pay_ref').value.trim();
+  const payment = {
+    id: db.newId('p'),
+    homeownerId: currentUser.id,
+    billingId, amount, refNum,
+    status: 'pending', receipt: null,
+    submittedAt: new Date().toISOString().split('T')[0],
+    remarks: '', reviewedAt: null,
+  };
+  db.save('payments', payment);
+  const bill = db.getOne('billings', billingId);
+  addNotification('Payment Submitted', `Your payment for "${bill ? bill.title : ''}" is under review.`);
+  showLoading();
+  setTimeout(() => {
+    hideLoading();
+    showToast('success', 'Payment Submitted', 'Your payment is now pending admin approval.');
+    navigate('ho-history');
+  }, 800);
+}
+
+function savePaymentSubmission(billingId, amount, refNum) {
   const payment = {
     id: db.newId('p'),
     homeownerId: currentUser.id,
@@ -2779,14 +2894,11 @@ function confirmSubmitComplaint() {
   openConfirm(
     'Submit Complaint',
     `Are you sure you want to submit this <strong>${category}</strong> complaint? It will be sent to the HOA administration for review.`,
-    submitHOComplaint
+    () => submitHOComplaint(category, description)
   );
 }
 
-function submitHOComplaint() {
-  const category    = document.getElementById('hc_category').value;
-  const description = document.getElementById('hc_description').value.trim();
-
+function submitHOComplaint(category, description) {
   const complaint = {
     id:            db.newId('c'),
     homeownerId:   currentUser.id,
