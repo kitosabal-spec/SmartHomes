@@ -1464,8 +1464,15 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
 
 .billing-helper-text {
   color: var(--text-3);
-  font-size: 0.82rem;
-  margin-top: -6px;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  margin-top: 7px;
+}
+
+#bf_amountHint:not(:empty) {
+  color: var(--teal-700);
+  font-weight: 600;
+  padding-left: 2px;
 }
 
 .billing-selected-count {

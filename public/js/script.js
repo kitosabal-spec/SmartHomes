@@ -939,6 +939,7 @@ function openProfessionalBillingModal() {
           <div class="form-group">
             <label>Amount (PHP) *</label>
             <input id="bf_amount" type="number" min="0" step="0.01" placeholder="1500.00"/>
+            <div class="billing-helper-text" id="bf_amountHint"></div>
           </div>
           <div class="form-group">
             <label>Due Date *</label>
@@ -987,6 +988,7 @@ function openProfessionalBillingModal() {
   ]);
 
   setupProfessionalBillingSearch();
+  setupBillingAmountAutoFill();
   updateProfessionalBillingSummary();
 }
 
@@ -1016,6 +1018,7 @@ function updateProfessionalBillingSummary() {
     allEl.checked = total > 0 && selected === total;
     allEl.indeterminate = selected > 0 && selected < total;
   }
+  updateBillingAmountForMonthlyDues();
 }
 
 function getDuesRatePerSqm() {
@@ -1029,14 +1032,60 @@ function calculateMonthlyDues(user, rate = getDuesRatePerSqm()) {
   return Math.round((Number.isFinite(lotArea) ? lotArea : 0) * rate * 100) / 100;
 }
 
+function isMonthlyDuesTitle(title) {
+  const text = (title || '').toLowerCase();
+  return text.includes('monthly') && text.includes('dues');
+}
+
+function setupBillingAmountAutoFill() {
+  const titleInput = document.getElementById('bf_title');
+  if (titleInput) titleInput.addEventListener('input', updateBillingAmountForMonthlyDues);
+  updateBillingAmountForMonthlyDues();
+}
+
+function updateBillingAmountForMonthlyDues() {
+  const titleInput = document.getElementById('bf_title');
+  const amountInput = document.getElementById('bf_amount');
+  const hint = document.getElementById('bf_amountHint');
+  if (!titleInput || !amountInput) return;
+
+  const monthlyDues = isMonthlyDuesTitle(titleInput.value);
+  const selectedIds = [...document.querySelectorAll('.ho-cb:checked')].map(c => c.value);
+
+  amountInput.readOnly = false;
+  if (hint) hint.textContent = '';
+
+  if (!monthlyDues) return;
+
+  if (selectedIds.length !== 1) {
+    amountInput.value = '';
+    amountInput.readOnly = true;
+    if (hint) hint.textContent = 'Select one homeowner to calculate from lot area.';
+    return;
+  }
+
+  const user = db.getOne('users', selectedIds[0]);
+  const rate = getDuesRatePerSqm();
+  const amount = calculateMonthlyDues(user, rate);
+  amountInput.value = amount.toFixed(2);
+  amountInput.readOnly = true;
+  if (hint) hint.textContent = `${user?.lotArea || 0} sqm x PHP ${rate.toLocaleString()} per sqm`;
+}
+
 function saveAddBilling() {
   const title = document.getElementById('bf_title').value.trim();
-  const amount = parseFloat(document.getElementById('bf_amount').value);
   const due = document.getElementById('bf_due').value;
   const billingMonth = formatBillingMonth(document.getElementById('bf_month')?.value);
-  if (!title || isNaN(amount) || !due || !billingMonth) { showToast('error', 'Missing Fields', 'Fill all required fields.'); return; }
+  if (!title || !due || !billingMonth) { showToast('error', 'Missing Fields', 'Fill all required fields.'); return; }
   const checked = [...document.querySelectorAll('.ho-cb:checked')].map(c => c.value);
   if (!checked.length) { showToast('error', 'No Assignment', 'Select at least one homeowner.'); return; }
+  if (isMonthlyDuesTitle(title) && checked.length !== 1) {
+    showToast('error', 'Select One Homeowner', 'Monthly dues are calculated per homeowner from lot area.');
+    return;
+  }
+  updateBillingAmountForMonthlyDues();
+  const amount = parseFloat(document.getElementById('bf_amount').value);
+  if (isNaN(amount)) { showToast('error', 'Missing Fields', 'Fill all required fields.'); return; }
   const finalTitle = title.toLowerCase().includes(billingMonth.toLowerCase()) ? title : `${title} - ${billingMonth}`;
   const description = document.getElementById('bf_desc').value.trim();
   const bill = {
