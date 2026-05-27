@@ -38,6 +38,11 @@ const tableConfig = {
     jsonColumns: [],
     booleanColumns: [],
   },
+  amenityBookings: {
+    columns: ['id', 'homeownerId', 'amenity', 'bookingDate', 'startTime', 'endTime', 'purpose', 'status', 'adminRemarks', 'createdAt', 'reviewedAt'],
+    jsonColumns: [],
+    booleanColumns: [],
+  },
   auditLog: {
     columns: ['id', 'action', 'adminId', 'timestamp'],
     jsonColumns: [],
@@ -92,6 +97,7 @@ const seed = {
   payments: [],
   announcements: [],
   complaints: [],
+  amenityBookings: [],
   auditLog: [],
   notifications: [],
   appSettings: [{ id: 'duesRatePerSqm', value: '5.725' }],
@@ -249,6 +255,20 @@ async function createTables() {
     dateFiled TEXT,
     updatedAt TEXT,
     resolvedAt TEXT
+  )`);
+
+  await run(`CREATE TABLE IF NOT EXISTS amenityBookings (
+    id TEXT PRIMARY KEY,
+    homeownerId TEXT,
+    amenity TEXT,
+    bookingDate TEXT,
+    startTime TEXT,
+    endTime TEXT,
+    purpose TEXT,
+    status TEXT,
+    adminRemarks TEXT,
+    createdAt TEXT,
+    reviewedAt TEXT
   )`);
 
   await run(`CREATE TABLE IF NOT EXISTS auditLog (

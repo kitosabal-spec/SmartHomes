@@ -5,16 +5,19 @@ let currentUser = null;
 let currentRole = 'admin';
 let currentView = 'dashboard';
 let notifications = [];
+let pendingPostLoginView = null;
 
 const ROLES = { ADMIN: 'admin', HOMEOWNER: 'homeowner' };
 const COMPLAINT_STATUSES = ['Reviewed', 'In Progress', 'Resolved', 'Rejected'];
 const DEFAULT_DUES_RATE_PER_SQM = 5.725;
+const AMENITIES = ['Basketball Court', 'Clubhouse', 'Chairs', 'Tables', 'Ladder'];
 
 const ADMIN_NAV = [
   { id: 'dashboard',      icon: 'ico-dashboard',  label: 'Dashboard',       section: 'MAIN' },
   { id: 'homeowners',     icon: 'ico-users',       label: 'Homeowners',      section: 'MAIN' },
   { id: 'billing',        icon: 'ico-file',        label: 'Billing',         section: 'MANAGEMENT' },
   { id: 'payments',       icon: 'ico-credit',      label: 'Payments',        section: 'MANAGEMENT' },
+  { id: 'amenities',      icon: 'ico-building',    label: 'Amenity Bookings', section: 'MANAGEMENT' },
   { id: 'complaints',     icon: 'ico-flag',        label: 'Complaints',      section: 'MANAGEMENT' },
   { id: 'announcements',  icon: 'ico-megaphone',   label: 'Announcements',   section: 'MANAGEMENT' },
   { id: 'reports',        icon: 'ico-chart',       label: 'Reports',         section: 'ANALYTICS' },
@@ -27,6 +30,7 @@ const HOMEOWNER_NAV = [
   { id: 'ho-billing',       icon: 'ico-file',       label: 'My Bills',        section: 'ACCOUNT' },
   { id: 'ho-payments',      icon: 'ico-upload',     label: 'Submit Payment',  section: 'ACCOUNT' },
   { id: 'ho-history',       icon: 'ico-history',    label: 'Payment History', section: 'ACCOUNT' },
+  { id: 'ho-amenities',     icon: 'ico-building',   label: 'Book Amenities',  section: 'ACCOUNT' },
   { id: 'ho-complaints',    icon: 'ico-flag',       label: 'File a Complaint',   section: 'ACCOUNT' },
   { id: 'ho-announcements', icon: 'ico-megaphone',  label: 'Announcements',   section: 'INFO' },
   { id: 'ho-profile',       icon: 'ico-user',       label: 'My Profile',      section: 'ACCOUNT' },
@@ -269,7 +273,10 @@ function initApp() {
   document.body.style.overflow = '';
   buildSidebar();
   setupSidebarOverlay();
-  const defaultView = currentUser.role === 'admin' ? 'dashboard' : 'ho-dashboard';
+  const defaultView = pendingPostLoginView && currentUser.role === 'homeowner'
+    ? pendingPostLoginView
+    : currentUser.role === 'admin' ? 'dashboard' : 'ho-dashboard';
+  pendingPostLoginView = null;
   navigate(defaultView);
   updateNotifBadge();
 }
@@ -340,6 +347,7 @@ function renderView(viewId) {
     'homeowners':        renderHomeowners,
     'billing':           renderBilling,
     'payments':          renderPayments,
+    'amenities':         renderAmenityBookingsAdmin,
     'complaints':        renderAdminComplaints,
     'announcements':     renderAnnouncements,
     'reports':           renderReports,
@@ -349,6 +357,7 @@ function renderView(viewId) {
     'ho-billing':        renderHOBilling,
     'ho-payments':       renderHOPayments,
     'ho-history':        renderHOHistory,
+    'ho-amenities':      renderHOAmenityBooking,
     'ho-complaints':     renderHOComplaints,
     'ho-announcements':  renderHOAnnouncements,
     'ho-profile':        renderHOProfile,
@@ -1294,6 +1303,321 @@ function autoGenerateLotAreaMonthlyDues() {
 
 // SECTION 9: ADMIN — PAYMENTS
 
+
+// SECTION 9: AMENITY BOOKINGS
+
+
+function getAmenityBookingDate(value) {
+  return value ? new Date(`${value}T00:00:00`) : null;
+}
+
+function isSundayDate(value) {
+  const date = getAmenityBookingDate(value);
+  return date ? date.getDay() === 0 : false;
+}
+
+function formatAmenityDate(value) {
+  const date = getAmenityBookingDate(value);
+  if (!date) return 'N/A';
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function amenityBookingConflicts(amenity, bookingDate, ignoreId = null) {
+  return db.get('amenityBookings').filter(booking =>
+    booking.id !== ignoreId &&
+    booking.amenity === amenity &&
+    booking.bookingDate === bookingDate &&
+    ['Pending', 'Approved'].includes(booking.status)
+  );
+}
+
+function getAmenityDayStatus(amenity, dateValue) {
+  if (isSundayDate(dateValue)) return 'Unavailable';
+  const bookings = amenityBookingConflicts(amenity, dateValue);
+  if (bookings.some(booking => booking.status === 'Approved')) return 'Booked';
+  if (bookings.some(booking => booking.status === 'Pending')) return 'Pending';
+  return 'Free';
+}
+
+function renderAmenityCalendar() {
+  const container = document.getElementById('amenityCalendar');
+  if (!container) return;
+  const amenity = document.getElementById('ab_amenity')?.value || AMENITIES[0];
+  const monthValue = document.getElementById('ab_month')?.value || new Date().toISOString().slice(0, 7);
+  const [year, month] = monthValue.split('-').map(Number);
+  const first = new Date(year, month - 1, 1);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const leadingBlanks = first.getDay();
+  const cells = [];
+
+  for (let i = 0; i < leadingBlanks; i++) cells.push('<div class="amenity-calendar-cell empty"></div>');
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateValue = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const status = getAmenityDayStatus(amenity, dateValue);
+    cells.push(`
+      <button class="amenity-calendar-cell ${status.toLowerCase()}" type="button" onclick="selectAmenityDate('${dateValue}')">
+        <span>${day}</span>
+        <small>${status}</small>
+      </button>`);
+  }
+
+  container.innerHTML = `
+    <div class="amenity-calendar-head">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => `<span>${day}</span>`).join('')}</div>
+    <div class="amenity-calendar-grid">${cells.join('')}</div>`;
+}
+
+function selectAmenityDate(dateValue) {
+  const input = document.getElementById('ab_date');
+  if (input) input.value = dateValue;
+  updateAmenityAvailabilityNote();
+}
+
+function updateAmenityAvailabilityNote() {
+  const note = document.getElementById('ab_availabilityNote');
+  if (!note) return;
+  const amenity = document.getElementById('ab_amenity')?.value;
+  const bookingDate = document.getElementById('ab_date')?.value;
+  if (!amenity || !bookingDate) {
+    note.textContent = 'Select an amenity and date to check availability.';
+    note.className = 'amenity-availability-note';
+    return;
+  }
+  const status = getAmenityDayStatus(amenity, bookingDate);
+  note.textContent = status === 'Free'
+    ? `${amenity} is available on ${formatAmenityDate(bookingDate)}.`
+    : `${amenity} is ${status.toLowerCase()} on ${formatAmenityDate(bookingDate)}.`;
+  note.className = `amenity-availability-note ${status.toLowerCase()}`;
+}
+
+function renderHOAmenityBooking() {
+  const today = new Date().toISOString().split('T')[0];
+  const currentMonth = today.slice(0, 7);
+  const myBookings = db.get('amenityBookings')
+    .filter(booking => booking.homeownerId === currentUser.id)
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  const area = document.getElementById('contentArea');
+  area.innerHTML = `
+  <div class="page-header">
+    <div class="page-header-left"><h2>Book Amenities</h2><p>Request use of community amenities and check availability.</p></div>
+  </div>
+  <div class="amenity-layout">
+    <div class="section-card">
+      <div class="section-card-header"><div><h3>New Booking Request</h3><p>Sundays are unavailable for all amenities.</p></div></div>
+      <div class="section-card-body">
+        <div class="grid-2">
+          <div class="form-group">
+            <label>Amenity *</label>
+            <select id="ab_amenity" onchange="renderAmenityCalendar();updateAmenityAvailabilityNote()">
+              ${AMENITIES.map(item => `<option value="${item}">${item}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Calendar Month</label>
+            <input id="ab_month" type="month" value="${currentMonth}" onchange="renderAmenityCalendar()"/>
+          </div>
+        </div>
+        <div id="amenityCalendar" class="amenity-calendar"></div>
+        <div class="grid-2" style="margin-top:16px">
+          <div class="form-group">
+            <label>Booking Date *</label>
+            <input id="ab_date" type="date" min="${today}" onchange="updateAmenityAvailabilityNote()"/>
+          </div>
+          <div class="form-group">
+            <label>Time *</label>
+            <div class="grid-2" style="gap:8px">
+              <input id="ab_start" type="time"/>
+              <input id="ab_end" type="time"/>
+            </div>
+          </div>
+        </div>
+        <div id="ab_availabilityNote" class="amenity-availability-note">Select an amenity and date to check availability.</div>
+        <div class="form-group" style="margin-top:14px">
+          <label>Purpose</label>
+          <textarea id="ab_purpose" placeholder="Briefly describe how the amenity will be used..."></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="confirmSubmitAmenityBooking()">Submit Request</button>
+      </div>
+    </div>
+    <div class="section-card">
+      <div class="section-card-header"><div><h3>My Requests</h3><p>Status of your amenity bookings.</p></div></div>
+      <div class="section-card-body no-pad">
+        <table class="data-table">
+          <thead><tr><th>Amenity</th><th>Date</th><th>Status</th></tr></thead>
+          <tbody>
+            ${myBookings.map(booking => `
+              <tr>
+                <td><strong>${booking.amenity}</strong><br><span style="font-size:0.78rem;color:var(--text-3)">${booking.startTime || ''} - ${booking.endTime || ''}</span></td>
+                <td>${formatAmenityDate(booking.bookingDate)}</td>
+                <td>${amenityStatusBadge(booking.status)}</td>
+              </tr>`).join('') || '<tr><td colspan="3"><div class="no-results">No amenity requests yet.</div></td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>`;
+  renderAmenityCalendar();
+}
+
+function confirmSubmitAmenityBooking() {
+  const amenity = document.getElementById('ab_amenity').value;
+  const bookingDate = document.getElementById('ab_date').value;
+  const startTime = document.getElementById('ab_start').value;
+  const endTime = document.getElementById('ab_end').value;
+  if (!amenity || !bookingDate || !startTime || !endTime) {
+    showToast('error', 'Missing Fields', 'Please select an amenity, date, and time.');
+    return;
+  }
+  if (isSundayDate(bookingDate)) {
+    showToast('error', 'Unavailable', 'Amenities are not available every Sunday.');
+    return;
+  }
+  if (endTime <= startTime) {
+    showToast('error', 'Invalid Time', 'End time must be later than start time.');
+    return;
+  }
+  if (amenityBookingConflicts(amenity, bookingDate).length) {
+    showToast('error', 'Not Available', `${amenity} is already booked or pending for that date.`);
+    return;
+  }
+  openConfirm('Submit Amenity Request', `Submit a request for <strong>${amenity}</strong> on <strong>${formatAmenityDate(bookingDate)}</strong>?`, submitAmenityBooking);
+}
+
+function submitAmenityBooking() {
+  const booking = {
+    id: db.newId('ab'),
+    homeownerId: currentUser.id,
+    amenity: document.getElementById('ab_amenity').value,
+    bookingDate: document.getElementById('ab_date').value,
+    startTime: document.getElementById('ab_start').value,
+    endTime: document.getElementById('ab_end').value,
+    purpose: document.getElementById('ab_purpose').value.trim(),
+    status: 'Pending',
+    adminRemarks: '',
+    createdAt: new Date().toISOString().split('T')[0],
+    reviewedAt: '',
+  };
+  db.save('amenityBookings', booking);
+  addNotification('Amenity Booking Request', `${currentUser.name} requested ${booking.amenity} on ${formatAmenityDate(booking.bookingDate)}.`);
+  logAction(`Submitted amenity booking request: ${booking.amenity} for ${currentUser.name}`);
+  closeModal();
+  showToast('success', 'Request Submitted', 'Your amenity booking request is now pending admin approval.');
+  renderHOAmenityBooking();
+}
+
+function renderAmenityBookingsAdmin() {
+  const bookings = [...db.get('amenityBookings')].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  const area = document.getElementById('contentArea');
+  area.innerHTML = `
+  <div class="page-header">
+    <div class="page-header-left"><h2>Amenity Bookings</h2><p>Review and manage homeowner amenity requests.</p></div>
+  </div>
+  <div class="section-card">
+    <div class="section-card-body no-pad">
+      <table class="data-table">
+        <thead><tr><th>Homeowner</th><th>Amenity</th><th>Date / Time</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>
+          ${bookings.map(booking => {
+            const homeowner = db.getOne('users', booking.homeownerId);
+            return `<tr>
+              <td><strong>${homeowner ? homeowner.name : 'Unknown'}</strong></td>
+              <td>${booking.amenity}<br><span style="font-size:0.78rem;color:var(--text-3)">${booking.purpose || 'No purpose provided'}</span></td>
+              <td>${formatAmenityDate(booking.bookingDate)}<br><span style="font-size:0.78rem;color:var(--text-3)">${booking.startTime || ''} - ${booking.endTime || ''}</span></td>
+              <td>${amenityStatusBadge(booking.status)}</td>
+              <td><div class="td-actions">
+                ${booking.status === 'Pending' ? `
+                  <button class="btn btn-success btn-sm" onclick="confirmApproveAmenityBooking('${booking.id}')">Approve</button>
+                  <button class="btn btn-danger btn-sm" onclick="openRejectAmenityBooking('${booking.id}')">Reject</button>
+                ` : `<button class="btn btn-secondary btn-sm" onclick="viewAmenityBooking('${booking.id}')">View</button>`}
+              </div></td>
+            </tr>`;
+          }).join('') || '<tr><td colspan="5"><div class="no-results">No amenity booking requests.</div></td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function confirmApproveAmenityBooking(id) {
+  const booking = db.getOne('amenityBookings', id);
+  if (!booking) return;
+  if (isSundayDate(booking.bookingDate)) {
+    showToast('error', 'Unavailable', 'Amenities are not available every Sunday.');
+    return;
+  }
+  if (amenityBookingConflicts(booking.amenity, booking.bookingDate, id).some(item => item.status === 'Approved')) {
+    showToast('error', 'Schedule Conflict', 'This amenity already has an approved booking for that date.');
+    return;
+  }
+  openConfirm('Approve Booking', `Approve <strong>${booking.amenity}</strong> for <strong>${formatAmenityDate(booking.bookingDate)}</strong>?`, () => approveAmenityBooking(id));
+}
+
+function approveAmenityBooking(id) {
+  const booking = db.getOne('amenityBookings', id);
+  if (!booking) return;
+  booking.status = 'Approved';
+  booking.reviewedAt = new Date().toISOString().split('T')[0];
+  db.save('amenityBookings', booking);
+  const homeowner = db.getOne('users', booking.homeownerId);
+  logAction(`Approved amenity booking: ${booking.amenity} for ${homeowner ? homeowner.name : 'Unknown'}`);
+  showToast('success', 'Approved', 'Amenity booking approved.');
+  renderAmenityBookingsAdmin();
+}
+
+function openRejectAmenityBooking(id) {
+  openModal('Reject Amenity Booking', `
+    <p style="color:var(--text-2);margin-bottom:16px">Please provide a reason for rejection.</p>
+    <div class="form-group"><label>Remarks</label><textarea id="amenityRejectRemarks" placeholder="e.g. Amenity unavailable for maintenance..."></textarea></div>
+  `, [
+    { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
+    { label: 'Reject', cls: 'btn-danger', action: () => confirmRejectAmenityBooking(id) },
+  ]);
+}
+
+function confirmRejectAmenityBooking(id) {
+  const booking = db.getOne('amenityBookings', id);
+  if (!booking) return;
+  const remarks = document.getElementById('amenityRejectRemarks').value.trim() || 'Rejected by admin.';
+  openConfirm('Reject Booking', `Reject <strong>${booking.amenity}</strong> request for <strong>${formatAmenityDate(booking.bookingDate)}</strong>?`, () => rejectAmenityBooking(id, remarks));
+}
+
+function rejectAmenityBooking(id, remarks) {
+  const booking = db.getOne('amenityBookings', id);
+  if (!booking) return;
+  booking.status = 'Rejected';
+  booking.adminRemarks = remarks;
+  booking.reviewedAt = new Date().toISOString().split('T')[0];
+  db.save('amenityBookings', booking);
+  const homeowner = db.getOne('users', booking.homeownerId);
+  logAction(`Rejected amenity booking: ${booking.amenity} for ${homeowner ? homeowner.name : 'Unknown'} - ${remarks}`);
+  closeModal();
+  showToast('warning', 'Rejected', 'Amenity booking rejected.');
+  renderAmenityBookingsAdmin();
+}
+
+function viewAmenityBooking(id) {
+  const booking = db.getOne('amenityBookings', id);
+  if (!booking) return;
+  const homeowner = db.getOne('users', booking.homeownerId);
+  openModal('Amenity Booking', `
+    <table style="width:100%;font-size:0.88rem">
+      <tr><td style="padding:6px 0;color:var(--text-3)">Homeowner</td><td style="font-weight:600">${homeowner ? homeowner.name : 'Unknown'}</td></tr>
+      <tr><td style="padding:6px 0;color:var(--text-3)">Amenity</td><td>${booking.amenity}</td></tr>
+      <tr><td style="padding:6px 0;color:var(--text-3)">Date</td><td>${formatAmenityDate(booking.bookingDate)}</td></tr>
+      <tr><td style="padding:6px 0;color:var(--text-3)">Time</td><td>${booking.startTime || ''} - ${booking.endTime || ''}</td></tr>
+      <tr><td style="padding:6px 0;color:var(--text-3)">Status</td><td>${amenityStatusBadge(booking.status)}</td></tr>
+      ${booking.adminRemarks ? `<tr><td style="padding:6px 0;color:var(--text-3)">Remarks</td><td>${booking.adminRemarks}</td></tr>` : ''}
+    </table>
+  `, [{ label: 'Close', cls: 'btn-secondary', action: closeModal }]);
+}
+
+function amenityStatusBadge(status) {
+  const map = {
+    Pending: '<span class="badge badge-yellow">Pending</span>',
+    Approved: '<span class="badge badge-green">Approved</span>',
+    Rejected: '<span class="badge badge-red">Rejected</span>',
+  };
+  return map[status] || `<span class="badge badge-gray">${status || 'Unknown'}</span>`;
+}
 
 function renderPayments() {
   const area = document.getElementById('contentArea');
@@ -2808,6 +3132,11 @@ function openLoginModal(role) {
   document.getElementById('loginModal').classList.remove('hidden');
   document.body.style.overflow = 'hidden';
   setTimeout(() => { if (lu) lu.focus(); }, 100);
+}
+
+function openAmenityBookingLogin() {
+  pendingPostLoginView = 'ho-amenities';
+  openLoginModal();
 }
 
 function closeLoginModal() {
